@@ -1,0 +1,11 @@
+video_id,source_file,loader_kind,num_rows,num_bad_rows,num_long_events_warn,unique_label_count,unique_labels,min_duration_ok,max_duration_ok,mean_duration_ok,median_duration_ok
+V1,V1.xlsx,v1_start_ending_class,1866,0,0,7,Cross|Jab|Lead Hook|Lead Uppercut|Rear Hook|Rear Uppercut|cross,1.0,25.0,9.988210075026796,10.0
+V10,V10.xlsx,v10_start_frame_end_frame_class,152,1,0,6,Cross|Jab|Lead Hook|Lead Uppercut|Rear Hook|Rear Uppercut,7.0,19.0,11.960264900662251,12.0
+V2,V2.xlsx,v2_no_header_cols012,232,0,0,5,Cross|Jab|Lead Hook|Lead Uppercut|Rear Uppercut,6.0,20.0,10.047413793103448,9.0
+V3,V3.xlsx,v3_first_three_cols,815,2,0,6,Cross|Jab|Lead Hook|Lead Uppercut|Rear Hook|Rear uppercut,1.0,63.0,7.605166051660516,7.0
+V4,V4.xlsx,v4_start_end_class,560,0,0,6,Cross|Jab|Lead Uppercut|Lead hook|Rear Hook|Rear Uppercut,2.0,25.0,7.651785714285714,7.0
+V5,V5.xlsx,v5_no_header_cols012,598,2,0,6,Cross|Jab|Lead Hook|Lead Uppercut|Rear Hook|Rear Uppercut,1.0,37.0,8.560402684563758,8.0
+V6,V6.xlsx,v6_start_end_class,804,119,0,4,Lead Hook|Lead Uppercut|Rear Hook|Rear Uppercut,8.0,28.0,16.392700729927007,16.0
+V7,V7.xlsx,v7_start_end_class,195,0,0,6,Cross|Jab|Lead Hook|Lead Uppercut|Rear Hook|Rear Uppercut,3.0,25.0,13.394871794871795,12.0
+V8,V8.xlsx,v8_start_end_class,199,0,0,5,Cross|Jab|Lead Hook|Lead Uppercut|Rear Uppercut,7.0,24.0,12.386934673366834,12.0
+V9,V9.xlsx,v9_start_frame_end_frame_class,149,0,0,6,Cross|Jab|Lead Hook|Lead Uppercut|Rear Hook|Rear Uppercut,5.0,111.0,10.771812080536913,10.0

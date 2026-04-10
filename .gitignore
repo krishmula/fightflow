@@ -1,1 +1,33 @@
-**/data/
+# ── Local-only data (do not push dataset, raw exports, or downloaded videos) ─
+data/raw/
+data/interim/
+data/downloaded_videos/*
+!data/downloaded_videos/.gitkeep
+
+# ── Python virtual environments ───────────────────────────────────────────────
+.venv/
+.tmp_venv/
+venv/
+env/
+
+# ── Python cache ──────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Editor ────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+
+# ── Tooling caches ─────────────────────────────────────────────────────────────
+.matplotlib-cache/

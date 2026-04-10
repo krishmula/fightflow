@@ -1,0 +1,26 @@
+# ── Core data / numerics ──────────────────────────────────────────────────────
+numpy
+pandas
+openpyxl          # read .xlsx annotation files
+odfpy             # read .ods metadata file (Meta_data.ods)
+
+# ── Video / image ─────────────────────────────────────────────────────────────
+opencv-python     # frame extraction and video utilities
+matplotlib        # visualisations and keypoint overlays
+Pillow            # image I/O helpers
+
+# ── Video download ────────────────────────────────────────────────────────────
+yt-dlp            # download YouTube source videos
+
+# ── Notebooks ─────────────────────────────────────────────────────────────────
+jupyter
+ipykernel         # register the venv as a Jupyter kernel
+
+# ── ML / deep learning (needed from Phase 2 onward) ──────────────────────────
+torch
+torchvision
+torchaudio
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+tqdm              # progress bars in scripts
+scikit-learn      # metrics, confusion matrix, train/val/test split helpers
