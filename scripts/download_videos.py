@@ -2,7 +2,8 @@
 """Step 4: read YouTube URLs from Meta_data.ods and download with yt-dlp.
 
 Writes a CSV report (fps, duration, frames, status). Downloaded .mp4 files stay
-under data/downloaded_videos/ (gitignored — do not commit videos).
+under data/downloaded-videos/ by default (gitignored — do not commit videos).
+By default, downloads are constrained to at most 1080p and 30 FPS.
 """
 
 from __future__ import annotations
@@ -186,28 +187,81 @@ def probe_video(path: Path) -> dict:
     }
 
 
-def run_ytdlp(url: str, out_path: Path) -> tuple[int, str]:
-    """Download merged MP4. Returns (returncode, stderr tail or message)."""
+def build_ytdlp_command(
+    url: str,
+    out_path: Path,
+    *,
+    use_android_client: bool,
+    max_height: int,
+    max_fps: int,
+) -> list[str]:
+    """Build a yt-dlp command for MP4 output within the requested video bounds."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     template = out_path.with_suffix(".%(ext)s")
-    cmd = [
-        "yt-dlp",
-        "-f",
-        "bv*+ba/b",
-        "--merge-output-format",
-        "mp4",
-        "-o",
-        str(template),
-        "--no-playlist",
-        "--newline",
-        url,
+    # Use same interpreter as this script so the venv's yt-dlp is used (bare `yt-dlp`
+    # is often missing from PATH when launching Python from an IDE or GUI).
+    cmd: list[str] = [
+        sys.executable,
+        "-m",
+        "yt_dlp",
     ]
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    except FileNotFoundError:
-        return 127, "yt-dlp not found on PATH"
-    err = (r.stderr or "")[-4000:]
-    return r.returncode, err
+    # The default client usually exposes higher-quality formats than android does.
+    # We optionally fall back to android in case the default client hits YouTube 403s.
+    if use_android_client:
+        cmd.extend(["--extractor-args", "youtube:player_client=android"])
+    cmd.extend(
+        [
+            "-f",
+            (
+                f"bv*[ext=mp4][height<={max_height}][fps<={max_fps}]+ba[ext=m4a]/"
+                f"bv*[height<={max_height}][fps<={max_fps}]+ba/"
+                f"b[ext=mp4][height<={max_height}][fps<={max_fps}]/"
+                f"b[height<={max_height}][fps<={max_fps}]"
+            ),
+            "--merge-output-format",
+            "mp4",
+            "-o",
+            str(template),
+            "--no-playlist",
+            "--newline",
+            url,
+        ]
+    )
+    return cmd
+
+
+def run_ytdlp(
+    url: str,
+    out_path: Path,
+    *,
+    allow_android_fallback: bool,
+    max_height: int,
+    max_fps: int,
+) -> tuple[int, str]:
+    """Download merged MP4. Returns (returncode, log tail for failures)."""
+    attempts = [False]
+    if allow_android_fallback:
+        attempts.append(True)
+    logs: list[str] = []
+    for use_android_client in attempts:
+        cmd = build_ytdlp_command(
+            url,
+            out_path,
+            use_android_client=use_android_client,
+            max_height=max_height,
+            max_fps=max_fps,
+        )
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        except FileNotFoundError:
+            return 127, "python interpreter not found"
+        client_name = "android" if use_android_client else "default"
+        log = ((r.stderr or "") + "\n" + (r.stdout or ""))[-6000:]
+        if r.returncode == 0:
+            return 0, log
+        logs.append(f"[{client_name} client]\n{log}")
+
+    return r.returncode, "\n\n".join(logs)[-6000:]
 
 
 def main() -> None:
@@ -221,8 +275,13 @@ def main() -> None:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("data/downloaded_videos"),
+        default=Path("data/downloaded-videos"),
         help="Directory for V*.mp4 (gitignored)",
+    )
+    parser.add_argument(
+        "--no-android-client",
+        action="store_true",
+        help="Do not fall back to youtube:player_client=android if the default client fails",
     )
     parser.add_argument(
         "--report",
@@ -239,6 +298,18 @@ def main() -> None:
         "--skip-existing",
         action="store_true",
         help="Skip download if target .mp4 already exists",
+    )
+    parser.add_argument(
+        "--max-height",
+        type=int,
+        default=1080,
+        help="Maximum downloaded video height in pixels",
+    )
+    parser.add_argument(
+        "--max-fps",
+        type=int,
+        default=30,
+        help="Maximum downloaded video frame rate",
     )
     parser.add_argument(
         "--only",
@@ -280,7 +351,13 @@ def main() -> None:
         if args.skip_existing and target.is_file():
             pass
         else:
-            code, err = run_ytdlp(url, target)
+            code, err = run_ytdlp(
+                url,
+                target,
+                allow_android_fallback=not args.no_android_client,
+                max_height=args.max_height,
+                max_fps=args.max_fps,
+            )
             if code != 0:
                 status = f"error_code_{code}"
                 sys.stderr.write(f"{vid}: yt-dlp failed ({code})\n{err}\n")

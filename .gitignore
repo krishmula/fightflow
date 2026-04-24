@@ -1,8 +1,11 @@
 # ── Local-only data (do not push dataset, raw exports, or downloaded videos) ─
-data/raw/
+data/raw/*
+!data/raw/RGB_videos/
+data/raw/RGB_videos/*
+!data/raw/RGB_videos/Meta_data.ods
 data/interim/
-data/downloaded_videos/*
-!data/downloaded_videos/.gitkeep
+data/downloaded-videos/*
+!data/downloaded-videos/.gitkeep
 
 # ── Python virtual environments ───────────────────────────────────────────────
 .venv/
