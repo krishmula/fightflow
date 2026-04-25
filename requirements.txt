@@ -24,3 +24,4 @@ torchaudio
 # ── Utilities ─────────────────────────────────────────────────────────────────
 tqdm              # progress bars in scripts
 scikit-learn      # metrics, confusion matrix, train/val/test split helpers
+PyYAML            # YAML-based model hyperparameter configs

@@ -34,3 +34,10 @@ Thumbs.db
 
 # ── Tooling caches ─────────────────────────────────────────────────────────────
 .matplotlib-cache/
+
+# ── ML training pipeline outputs ─────────────────────────────────────────────
+models/*/runs/
+models/*/eval/
+models/*/inference/
+data/classification/**
+!data/classification/.gitkeep
