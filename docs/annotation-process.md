@@ -2,7 +2,7 @@
 
 ## Project context
 
-Building a two-stage deep learning system to classify punch types (jab, cross, hook, uppercut) from video:
+Building a two-stage deep learning system to classify punch types (straight, hook, uppercut) from video:
 
 - **Stage 1**: Per-frame ResNet-18 baseline (single frame in → punch class out)
 - **Stage 2**: CNN+LSTM clip-level classifier (sequence of frames in → punch class out)
@@ -29,15 +29,15 @@ A single CSV (or JSONL) file with one row per punch event:
 
 ```
 video_id,     frame_index, punch_type, occluded, notes
-fight_01.mp4, 1247,        jab,        false,    ""
-fight_01.mp4, 1389,        cross,      false,    ""
+fight_01.mp4, 1247,        straight,        false,    ""
+fight_01.mp4, 1389,        straight,      false,    ""
 fight_01.mp4, 1502,        hook,       true,     "partial occlusion"
-fight_02.mp4, 203,         jab,        false,    ""
+fight_02.mp4, 203,         straight,        false,    ""
 ```
 
 Minimum required columns: `video_id`, `frame_index`, `punch_type`. Optional but useful: `occluded`, `notes`, `fighter_id`, `camera_angle`.
 
-**Frame index, not timestamp**: frame numbers are exact integers; timestamps drift with variable frame rate and fps differences across videos. Convert to time later if needed via `time = frame_index / fps`.
+**Frame index, not timestamp**: frame numbers are exact integers; timestamps drift with variable frame rate and fps differences astraight videos. Convert to time later if needed via `time = frame_index / fps`.
 
 ## The single most important decision: what does "contact frame" mean?
 
@@ -47,7 +47,7 @@ Before annotating anything, pick one definition and apply it consistently to eve
 - Option B: **moment of full arm extension (visual peak)** — recommended
 - Option C: moment the fist starts moving forward
 
-Full arm extension is recommended because it's the most visually identifiable and least often occluded. Inconsistency here poisons the training signal — the "moment" of a jab would effectively move around in the training data, and the model would struggle to learn a stable pattern.
+Full arm extension is recommended because it's the most visually identifiable and least often occluded. Inconsistency here poisons the training signal — the "moment" of a straight would effectively move around in the training data, and the model would struggle to learn a stable pattern.
 
 ## Tooling
 
@@ -55,7 +55,7 @@ Three realistic options:
 
 **VIA (VGG Image Annotator)** — browser-based, zero install, supports temporal annotations with custom attribute dropdowns, exports CSV. Best for getting started immediately. Link: `https://www.robots.ox.ac.uk/~vgg/software/via/`
 
-**Custom Jupyter notebook with ipywidgets** — ~50 lines of Python. Shows current frame, arrow keys to scrub, hotkeys `j/c/h/u` to label jab/cross/hook/uppercut, `n` for negative, logs to DataFrame, saves CSV periodically. Fastest per-event by a significant margin — worth the 30-minute setup cost for a multi-thousand-event project.
+**Custom Jupyter notebook with ipywidgets** — ~50 lines of Python. Shows current frame, arrow keys to scrub, hotkeys `j/c/h/u` to label straight/straight/hook/uppercut, `n` for negative, logs to DataFrame, saves CSV periodically. Fastest per-event by a significant margin — worth the 30-minute setup cost for a multi-thousand-event project.
 
 **CVAT** — more powerful but overkill for point events. Worth considering if we later add bounding boxes around the punching fist.
 
@@ -74,7 +74,7 @@ For each video:
 
 ## Dataset scope
 
-**Classes**: {jab, cross, hook, uppercut} + optionally a fifth "none/other" class for negatives.
+**Classes**: {straight, hook, uppercut} + optionally a fifth "none/other" class for negatives.
 
 **Target counts**: minimum ~200/class to get past random, ~500/class for a real shot at learnable patterns, ideally 1,000+/class. For 4 classes, realistic target is 2,000–4,000 total annotations.
 
@@ -93,7 +93,7 @@ Split the CSV by `video_id` (or by fight/event), **not** randomly by row. Otherw
 
 ## Augmentation caveat
 
-Horizontal flipping — a standard image augmentation — is dangerous for this task. Flipping an orthodox jab (lead hand) produces a visual that looks like a southpaw cross. For fine-grained punch-type classification, naive flipping corrupts the label. Either skip horizontal flips, or flip _and_ swap the jab↔cross label simultaneously.
+Horizontal flipping — a standard image augmentation — is dangerous for this task. Flipping an orthodox straight (lead hand) produces a visual that looks like a southpaw straight. For fine-grained punch-type classification, naive flipping corrupts the label. Either skip horizontal flips, or flip _and_ swap the straight↔straight label simultaneously.
 
 ## Downstream: from CSV to training data
 

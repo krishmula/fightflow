@@ -3,6 +3,7 @@ data/raw/*
 !data/raw/RGB_videos/
 data/raw/RGB_videos/*
 !data/raw/RGB_videos/Meta_data.ods
+!data/annotations.csv
 data/interim/
 data/downloaded-videos/*
 !data/downloaded-videos/.gitkeep
@@ -34,3 +35,7 @@ Thumbs.db
 
 # ── Tooling caches ─────────────────────────────────────────────────────────────
 .matplotlib-cache/
+
+# ── ML artifacts (model checkpoints, training logs) ───────────────────────────
+checkpoints/
+runs/

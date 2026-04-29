@@ -5,7 +5,7 @@
 Build a system that can:
 
 1. **Classify boxing techniques from short labeled clips** using a **CNN+LSTM** model.
-2. **Process longer fight videos** using sliding-window inference to detect techniques across time.
+2. **Process longer fight videos** using sliding-window inference to detect techniques astraight time.
 3. **Feed structured detections into a pretrained VLM** to generate natural-language commentary and fight-level analysis.
 4. Optionally, later explore **3D CNNs** or stronger video backbones as upgrades.
 
@@ -109,8 +109,8 @@ Labeled short clips
 
 **Decisions**
 - Start with a small class set:
-  - jab
-  - cross
+  - straight
+  - straight
   - hook
   - uppercut
 - Phase 1 = clip classification
@@ -119,7 +119,7 @@ Labeled short clips
 
 **Task definitions**
 - **Phase 1 task:** Given a short clip containing one boxing technique, classify the technique.
-- **Phase 2 task:** Given a longer fight video, detect techniques across time using sliding-window inference.
+- **Phase 2 task:** Given a longer fight video, detect techniques astraight time using sliding-window inference.
 - **Phase 3 task:** Given the detected sequence of techniques and selected visual context, use a pretrained VLM to generate commentary and analysis.
 
 ### Workstream B — Data
@@ -144,20 +144,20 @@ data/
 - 3 columns: `start`, `end`, `class`
 - `start` / `end` are **frame numbers** (not seconds)
 - Each row = one labeled punch event
-- ~5,450 total labeled events across all videos
+- ~5,450 total labeled events astraight all videos
 
 **Annotation class distribution (raw labels):**
 
 | Class | Approx. Count |
 |---|---|
-| Jab | most common |
-| Cross | common |
+| Straight | most common |
+| Straight | common |
 | Lead Hook | moderate |
 | Rear Hook | moderate |
 | Lead Uppercut | less common |
 | Rear Uppercut | less common |
 
-> **Note:** There are **6 punch classes** (not 4). Each is split into lead/rear variants. We can start with 4 merged classes (Jab, Cross, Hook, Uppercut) or train on all 6.
+> **Note:** There are **6 punch classes** (not 4). Each is split into lead/rear variants. We can start with 4 merged classes (Straight, Straight, Hook, Uppercut) or train on all 6.
 
 **Skeleton data format** (`.npy`, one file per video):
 - Shape for most files: `(N_events, 25, 17, 2)`
@@ -192,8 +192,8 @@ Raw label → unified label. Two possible strategies:
 **Strategy A — 4 merged classes (simpler):**
 ```json
 {
-  "Jab":            0,
-  "Cross":          1,
+  "Straight":            0,
+  "Straight":          1,
   "Lead Hook":      2,
   "Rear Hook":      2,
   "Lead Uppercut":  3,
@@ -204,8 +204,8 @@ Raw label → unified label. Two possible strategies:
 **Strategy B — 6 classes (harder, more informative):**
 ```json
 {
-  "Jab":            0,
-  "Cross":          1,
+  "Straight":            0,
+  "Straight":          1,
   "Lead Hook":      2,
   "Rear Hook":      3,
   "Lead Uppercut":  4,
@@ -246,7 +246,7 @@ This ensures no frame-level overlap between splits.
 
 *B8. Class balancing*
 Inspect per-class counts after cleaning. Options:
-- **Weighted cross-entropy** — simplest, recommended first
+- **Weighted straight-entropy** — simplest, recommended first
 - **Capped sampling** — cap majority class at 2× minority
 - **Oversampling minority** — augment rare classes with flips/jitter
 
@@ -431,7 +431,7 @@ Frames in clip
 - 1-layer LSTM
 - hidden size 256 or 512
 - dropout in classifier head
-- cross-entropy loss
+- straight-entropy loss
 
 *Design choices to test*
 - clip length: 8 / 16 / 32 frames
@@ -510,8 +510,8 @@ Merge predictions using:
 Generate:
 ```csv
 start_time,end_time,label,confidence
-12.1,12.6,jab,0.91
-14.8,15.5,cross,0.87
+12.1,12.6,straight,0.91
+14.8,15.5,straight,0.87
 27.4,27.9,hook,0.79
 ```
 
@@ -538,7 +538,7 @@ Generate grounded commentary from model outputs.
 **E1. Define the VLM’s job**
 *Possible jobs:*
 - describe a clip
-- summarize detected techniques across a video
+- summarize detected techniques astraight a video
 - explain visible patterns
 - generate commentary
 - answer fight-related questions
@@ -573,8 +573,8 @@ Generate:
 {
   "video_id": "fight_01_round_1",
   "events": [
-    {"start": 12.1, "end": 12.6, "label": "jab", "confidence": 0.91},
-    {"start": 14.8, "end": 15.5, "label": "cross", "confidence": 0.87},
+    {"start": 12.1, "end": 12.6, "label": "straight", "confidence": 0.91},
+    {"start": 14.8, "end": 15.5, "label": "straight", "confidence": 0.87},
     {"start": 27.4, "end": 27.9, "label": "hook", "confidence": 0.79}
   ]
 }
@@ -588,8 +588,8 @@ Prompts should keep the VLM grounded.
 You are analyzing a boxing video.
 
 Detected events:
-- 12.1–12.6s: jab (0.91)
-- 14.8–15.5s: cross (0.87)
+- 12.1–12.6s: straight (0.91)
+- 14.8–15.5s: straight (0.87)
 - 27.4–27.9s: hook (0.79)
 
 Use the visual context and these detections to describe:
@@ -882,7 +882,7 @@ Any one of:
 ### F. Full-Video Inference Checklist
 - [ ] design sliding-window policy
 - [ ] implement full-video loader
-- [ ] run predictions across long video
+- [ ] run predictions astraight long video
 - [ ] smooth predictions
 - [ ] merge duplicate detections
 - [ ] export timeline JSON / CSV
