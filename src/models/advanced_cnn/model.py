@@ -25,7 +25,7 @@ class ResidualBlock(nn.Module):
         return out
 
 class AdvancedCNN(nn.Module):
-    def __init__(self, num_classes=5):
+    def __init__(self, num_classes=4):
         super().__init__()
         self.in_channels = 64
         self.conv1 = nn.Conv2d(3, 64, kernel_size=5, stride=2, padding=2, bias=False)

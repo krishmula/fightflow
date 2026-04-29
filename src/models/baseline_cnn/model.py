@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 class BaselineCNN(nn.Module):
-    def __init__(self, num_classes=5):
+    def __init__(self, num_classes=4):
         super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=3, padding=1),

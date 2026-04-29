@@ -16,7 +16,7 @@ from src.models.baseline_cnn.model import BaselineCNN
 from src.models.advanced_cnn.model import AdvancedCNN
 
 # Reverse mapping from integer to string class
-CLASS_MAP = {0: 'none', 1: 'jab', 2: 'cross', 3: 'hook', 4: 'uppercut'}
+CLASS_MAP = {0: 'none', 1: 'straight', 2: 'hook', 3: 'uppercut'}
 
 def extract_frame(video_path, frame_index):
     """Accurately extracts a single frame using PyAV (matches training logic)."""
@@ -75,9 +75,9 @@ def main():
 
     print(f"Loading {args.model} model on {device}...")
     if args.model == 'advanced':
-        model = AdvancedCNN(num_classes=5).to(device)
+        model = AdvancedCNN(num_classes=4).to(device)
     else:
-        model = BaselineCNN(num_classes=5).to(device)
+        model = BaselineCNN(num_classes=4).to(device)
         
     model.load_state_dict(torch.load(weights_path, map_location=device))
     model.eval() # Set to evaluation mode!

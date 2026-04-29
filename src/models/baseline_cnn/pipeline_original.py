@@ -23,7 +23,7 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from tqdm import tqdm
 
-DEFAULT_CLASS_NAMES = ["jab", "hook", "uppercut", "negative"]
+DEFAULT_CLASS_NAMES = ["straight", "hook", "uppercut", "negative"]
 SUPPORTED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 SUPPORTED_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".m4v", ".webm"}
 DEFAULT_DATA_ROOT = "data/classification/boxing4cls"
@@ -219,16 +219,16 @@ def resolve_class_source_dirs(split_dir: Path, class_name: str) -> list[Path]:
     """Map class names to one or more source folders inside a split directory.
 
     Special case:
-    - class_name == "not_jab": combines all non-jab directories in that split,
-      and also includes an explicit "not_jab" folder if present.
+    - class_name == "not_straight": combines all non-straight directories in that split,
+      and also includes an explicit "not_straight" folder if present.
     """
     cname = class_name.strip().lower()
-    if cname != "not_jab":
+    if cname != "not_straight":
         d = split_dir / cname
         return [d] if d.is_dir() else []
 
     source_dirs: list[Path] = []
-    explicit = split_dir / "not_jab"
+    explicit = split_dir / "not_straight"
     if explicit.is_dir():
         source_dirs.append(explicit)
 
@@ -237,7 +237,7 @@ def resolve_class_source_dirs(split_dir: Path, class_name: str) -> list[Path]:
             if not child.is_dir():
                 continue
             nm = child.name.strip().lower()
-            if nm in {"jab", "not_jab"}:
+            if nm in {"straight", "not_straight"}:
                 continue
             source_dirs.append(child)
 

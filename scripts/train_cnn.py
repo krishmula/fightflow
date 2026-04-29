@@ -60,7 +60,8 @@ def main():
 
     train_transform = transforms.Compose([
         transforms.Resize((128, 128)),
-        transforms.RandomHorizontalFlip(),
+        # RandomHorizontalFlip omitted: flipping a jab produces a visually southpaw cross,
+        # corrupting the label. See docs/annotation-process.md.
         transforms.ColorJitter(brightness=0.2, contrast=0.2),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -90,19 +91,22 @@ def main():
         val_loader = None
 
     if args.model == 'advanced':
-        model = AdvancedCNN(num_classes=5).to(device)
+        model = AdvancedCNN(num_classes=4).to(device)
         writer = SummaryWriter("runs/advanced_cnn")
         best_model_path_template = "checkpoints/advanced_cnn_best.pth"
     else:
-        model = BaselineCNN(num_classes=5).to(device)
+        model = BaselineCNN(num_classes=4).to(device)
         writer = SummaryWriter("runs/baseline_cnn")
         best_model_path_template = "checkpoints/baseline_cnn_best.pth"
 
     # Class distribution weighting
-    weights = torch.tensor([0.2, 1.0, 1.0, 1.0, 2.0], device=device)
+    weights = torch.tensor([0.2, 1.0, 1.0, 2.0], device=device)
     criterion = nn.CrossEntropyLoss(weight=weights)
     
     optimizer = optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='max', factor=0.5, patience=5
+    )
 
     # Initialize Checkpoints & TensorBoard
     os.makedirs("checkpoints", exist_ok=True)
@@ -121,23 +125,24 @@ def main():
         if val_loader:
             val_loss, val_acc, all_preds, all_labels = evaluate(model, val_loader, criterion, device, epoch)
             print(f"Val Loss:   {val_loss:.4f} | Val Acc:   {val_acc*100:.2f}%")
-            
+
             # Log to TensorBoard
             writer.add_scalar('Loss/val', val_loss, epoch)
             writer.add_scalar('Accuracy/val', val_acc, epoch)
+
+            # Per-class breakdown every epoch to catch majority-class collapse early
+            target_names = ['none', 'straight', 'hook', 'uppercut']
+            actual_present_labels = sorted(list(set(all_labels)))
+            filtered_target_names = [target_names[i] for i in actual_present_labels]
+            print(classification_report(all_labels, all_preds, target_names=filtered_target_names, zero_division=0))
+
+            scheduler.step(val_acc)
 
             # Checkpointing
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
                 torch.save(model.state_dict(), best_model_path_template)
                 print(f"🌟 New Best Validation Accuracy! Model saved to {best_model_path_template}")
-
-            if epoch == EPOCHS:
-                target_names = ['none', 'jab', 'cross', 'hook', 'uppercut']
-                print("\nFinal Validation Report:")
-                actual_present_labels = sorted(list(set(all_labels)))
-                filtered_target_names = [target_names[i] for i in actual_present_labels]
-                print(classification_report(all_labels, all_preds, target_names=filtered_target_names, zero_division=0))
         else:
             # If no validation set, just save the best training accuracy
             if train_acc > best_val_acc:
