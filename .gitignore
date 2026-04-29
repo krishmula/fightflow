@@ -39,3 +39,10 @@ Thumbs.db
 # ── ML artifacts (model checkpoints, training logs) ───────────────────────────
 checkpoints/
 runs/
+
+# ── ML training pipeline outputs ─────────────────────────────────────────────
+models/*/runs/
+models/*/eval/
+models/*/inference/
+data/classification/**
+!data/classification/.gitkeep
