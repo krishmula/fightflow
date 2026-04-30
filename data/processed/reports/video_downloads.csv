@@ -1,0 +1,13 @@
+video_id,source_url,file_path,width,height,fps,duration_sec,num_frames,probe,download_status
+V1,https://www.youtube.com/watch?v=3ov6zVAXHJI&t=709s,/Users/krishna/dev/fightflow/data/downloaded-videos/V1.mp4,1920,1080,24.0,1940.120091,46562,ffprobe,ok
+V2,https://www.youtube.com/watch?v=JGLLJUgm-0c&t=28s,/Users/krishna/dev/fightflow/data/downloaded-videos/V2.mp4,1920,1080,23.976023976023978,1360.224943,32611,ffprobe,ok
+V3,https://www.youtube.com/watch?v=Cx6JfrRO4eA,/Users/krishna/dev/fightflow/data/downloaded-videos/V3.mp4,1920,1080,23.976023976023978,1415.093696,33927,ffprobe,ok
+V4,https://www.youtube.com/watch?v=IVvOmoB88FM&t=345s,/Users/krishna/dev/fightflow/data/downloaded-videos/V4.mp4,1920,1080,23.976023976023978,1475.001179,35363,ffprobe,ok
+V5,https://www.youtube.com/watch?v=V59fcX1YC7E,/Users/krishna/dev/fightflow/data/downloaded-videos/V5.mp4,1920,1080,29.97002997002997,517.874649,15519,ffprobe,ok
+V6,https://www.youtube.com/watch?v=cQW-h8yGbRc,/Users/krishna/dev/fightflow/data/downloaded-videos/V6.mp4,1920,1080,23.976023976023978,1948.061315,46704,ffprobe,ok
+V7,https://www.youtube.com/watch?v=sqU3DmLppcQ&t=29s,/Users/krishna/dev/fightflow/data/downloaded-videos/V7.mp4,1920,1080,29.97002997002997,936.391111,28062,ffprobe,ok
+V8,https://www.youtube.com/watch?v=tSNybMUpMKk&t=681s,/Users/krishna/dev/fightflow/data/downloaded-videos/V8.mp4,1920,1080,29.97002997002997,803.59619,24081,ffprobe,ok
+V9,https://www.youtube.com/watch?v=Yq4mOLFwjwo,/Users/krishna/dev/fightflow/data/downloaded-videos/V9.mp4,1920,1080,24.0,702.775147,16865,ffprobe,ok
+V10,https://www.youtube.com/watch?v=e9bZnq4I3S4,/Users/krishna/dev/fightflow/data/downloaded-videos/V10.mp4,1920,1080,24.0,689.934512,16557,ffprobe,ok
+V11,https://www.youtube.com/watch?v=u3eIEw5p9u8,/Users/krishna/dev/fightflow/data/downloaded-videos/V11.mp4,1920,1080,24.0,2137.443265,51297,ffprobe,ok
+V12,https://www.youtube.com/watch?v=gqHc3OtDF-Y,/Users/krishna/dev/fightflow/data/downloaded-videos/V12.mp4,1920,1080,24.0,1010.044807,24240,ffprobe,ok
