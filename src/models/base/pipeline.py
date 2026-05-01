@@ -141,19 +141,54 @@ def get_transforms(image_size: int):
     norm_cfg = aug_cfg.get("normalize", {"mean": [0.485, 0.456, 0.406], "std": [0.229, 0.224, 0.225]})
     normalize = transforms.Normalize(mean=norm_cfg["mean"], std=norm_cfg["std"])
     
+    # Basic augmentations
     flip_p = aug_cfg.get("random_horizontal_flip_p", 0.5)
-    
     jitter_cfg = aug_cfg.get("color_jitter", {"brightness": 0.2, "contrast": 0.2, "saturation": 0.15})
     
-    train_tf = transforms.Compose(
-        [
-            transforms.Resize((image_size, image_size)),
-            transforms.RandomHorizontalFlip(p=flip_p),
-            transforms.ColorJitter(brightness=jitter_cfg["brightness"], contrast=jitter_cfg["contrast"], saturation=jitter_cfg["saturation"]),
-            transforms.ToTensor(),
-            normalize,
-        ]
+    # Motion-specific augmentations
+    rotation_cfg = aug_cfg.get("random_rotation", {"degrees": 15})
+    affine_cfg = aug_cfg.get("random_affine", {"degrees": 0, "translate": [0.1, 0.1], "scale": [0.9, 1.1], "shear": 5})
+    erasing_cfg = aug_cfg.get("random_erasing", {"p": 0.3, "scale": [0.02, 0.1], "ratio": [0.3, 3.3]})
+    
+    train_transforms = [
+        transforms.Resize((image_size, image_size)),
+        transforms.RandomHorizontalFlip(p=flip_p),
+        transforms.ColorJitter(
+            brightness=jitter_cfg["brightness"], 
+            contrast=jitter_cfg["contrast"], 
+            saturation=jitter_cfg["saturation"]
+        ),
+    ]
+    
+    # Add motion-specific augmentations
+    if rotation_cfg["degrees"] > 0:
+        train_transforms.append(transforms.RandomRotation(degrees=rotation_cfg["degrees"]))
+    
+    train_transforms.append(
+        transforms.RandomAffine(
+            degrees=affine_cfg["degrees"],
+            translate=affine_cfg["translate"],
+            scale=affine_cfg["scale"],
+            shear=affine_cfg["shear"]
+        )
     )
+    
+    train_transforms.extend([
+        transforms.ToTensor(),
+        normalize,
+    ])
+    
+    # Add random erasing at the end (after ToTensor)
+    if erasing_cfg["p"] > 0:
+        train_transforms.append(
+            transforms.RandomErasing(
+                p=erasing_cfg["p"],
+                scale=erasing_cfg["scale"],
+                ratio=erasing_cfg["ratio"]
+            )
+        )
+    
+    train_tf = transforms.Compose(train_transforms)
     eval_tf = transforms.Compose(
         [
             transforms.Resize((image_size, image_size)),
@@ -557,7 +592,11 @@ def train(args: argparse.Namespace, model_class: type[nn.Module]) -> None:
         else None
     )
 
-    model = model_class(num_classes=len(class_names)).to(device)
+    # Instantiate model with optional attention parameter
+    model_kwargs = {"num_classes": len(class_names)}
+    if hasattr(args, 'use_attention'):
+        model_kwargs["use_attention"] = args.use_attention
+    model = model_class(**model_kwargs).to(device)
     class_weights = (
         compute_class_weights(train_samples, len(class_names), device) if args.use_class_weights else None
     )

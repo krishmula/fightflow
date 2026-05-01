@@ -57,29 +57,42 @@ python main.py --model resnet18 --task test
 - **Code Cleanup**: Removed unused parameters and standalone script execution
 - Goal: Push F1 score above 0.90 with transfer learning advantage
 
+### Enhanced Data Augmentations (May 1, 2026)
+- **Motion-specific transforms**: Random rotations (±15°) and affine transforms for motion variation
+- **Random erasing**: Cutout-style augmentation (30% probability) for robustness
+- **Improved data pipeline**: Real-time augmentation during training, no preprocessing needed
+- **Purpose**: Better generalization to different punch execution styles
+
+### Spatial Attention Module (May 1, 2026)
+- **Channel attention mechanism**: Focuses on motion-relevant features in final layer
+- **Lightweight design**: Only 32,768 additional parameters (0.28% increase)
+- **Transfer learning friendly**: Learns quickly with pretrained weights
+- **Purpose**: Improved focus on punch motion patterns, especially for hook detection
+
 ### Latest Results (May 1, 2026)
 
-**Training Run**: `resnet18_multiclass_20260501_113142`
-- **Best Epoch**: 17/27
-- **Best Validation Macro F1**: 0.9332
-- **Test Macro F1**: 0.8979
-- **Test Accuracy**: 90.0%
+**Training Run**: `resnet18_multiclass_20260501_122429`
+- **Best Epoch**: 19/30
+- **Best Validation Macro F1**: 0.933
+- **Test Macro F1**: 0.955
+- **Test Accuracy**: 95.6%
 
 #### Class-wise Performance (Test Set):
-- **Straight**: F1 = 0.875 (Precision: 0.84, Recall: 0.913)
-- **Hook**: F1 = 0.800 (Precision: 0.889, Recall: 0.727)
-- **Uppercut**: F1 = 0.917 (Precision: 0.88, Recall: 0.957)
-- **None**: F1 = 1.000 (Precision: 1.0, Recall: 1.0)
+- **Straight**: F1 = 0.933 (Precision: 0.955, Recall: 0.913)
+- **Hook**: F1 = 0.952 (Precision: 1.000, Recall: 0.909)
+- **Uppercut**: F1 = 0.958 (Precision: 0.92, Recall: 1.000)
+- **None**: F1 = 0.978 (Precision: 0.957, Recall: 1.000)
 
 #### Key Achievements:
-- **Superior Performance**: Achieved 0.933 F1 on validation, significantly outperforming the custom CNN models
-- **Efficient Training**: Reached peak performance by epoch 17, demonstrating fast convergence with transfer learning
-- **Balanced Classification**: Strong performance across all punch types, with perfect classification of "none" class
-- **Transfer Learning Success**: Pretrained ImageNet weights provided excellent feature extraction for the limited dataset
+- **Superior Performance**: Achieved 0.955 F1 on test set, outperforming all other models
+- **Hook Class Breakthrough**: Perfect precision (1.000) with excellent recall (0.909)
+- **Balanced Classification**: All classes performing strongly across precision and recall
+- **Efficient Training**: Converged by epoch 19 with stable learning
+- **Small Dataset Success**: Excellent results with only 448 samples per class after balancing
 
 #### Comparison with Other Models:
-- **ResNet-18**: 0.898 F1 (test) - **BEST PERFORMANCE**
+- **ResNet-18**: 0.955 F1 (test) - **BEST PERFORMANCE**
 - **Advanced CNN**: 0.776 F1 (test)
 - **Baseline CNN**: ~0.70 F1 (test)
 
-The ResNet-18 model with transfer learning has proven to be the most effective approach, achieving 90% accuracy and 0.90 macro F1 on the test set. The model's ability to leverage pretrained features from ImageNet makes it particularly well-suited for this computer vision task with limited training data.
+The ResNet-18 model with enhanced augmentations and spatial attention has proven to be the most effective approach, achieving 95.6% accuracy and 0.955 macro F1 on the test set. The combination of transfer learning, motion-specific augmentations, and attention mechanism provides excellent performance for punch classification with limited training data.

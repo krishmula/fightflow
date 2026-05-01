@@ -33,6 +33,8 @@ train:
   lr_patience: 5
   # Whether to compute and apply class weights to handle imbalanced datasets
   use_class_weights: true
+  # Whether to use spatial attention module for motion focus
+  use_attention: true
   # Directory where run artifacts (checkpoints, metrics) will be saved
   output_dir: runs/resnet18
   # Subfolder prefix for the current run
