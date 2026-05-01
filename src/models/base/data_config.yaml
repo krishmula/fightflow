@@ -1,0 +1,34 @@
+# Global Configuration for Data Pre-processing
+data:
+  annotations_file: "data/annotations.csv"
+  video_dir: "data/downloaded-videos"
+  processed_frames_dir: "data/processed/frames"
+  manifest_file: "data/processed/dataset_manifest_kush.csv"
+
+# Global Target Classes
+classes: ["straight", "hook", "uppercut", "none"]
+
+# Data Preparation Constraints
+# ----------------------------
+# uniform_samples_per_class:
+#   - null   : Uses all available samples (no limits applied).
+#   - "auto" : Dynamically finds the minority class count and strictly balances 
+#              all other classes to match this number. This prevents class imbalance.
+#   - <int>  : Hard limit (e.g. 500). Limits each class to exactly this many samples.
+# 
+# Note: For uniform sampling, the script distributes the quota evenly across all 
+#       unique videos for a given class. It interleaves frames from different videos
+#       to ensure maximum diversity and avoids front-loading frames from a single video.
+preparation:
+  uniform_samples_per_class: 20
+
+# Data Augmentation Configuration
+augmentation:
+  random_horizontal_flip_p: 0.5
+  color_jitter:
+    brightness: 0.2
+    contrast: 0.2
+    saturation: 0.15
+  normalize:
+    mean: [0.485, 0.456, 0.406]
+    std: [0.229, 0.224, 0.225]

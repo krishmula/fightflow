@@ -11,8 +11,9 @@ _ROOT = Path(__file__).resolve().parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from models.baseline_cnn import BaselineCNNAPI
-from models.advanced_cnn import AdvancedCNNAPI
+from src.models.cnn_baseline.api import BaselineCNNAPI
+from src.models.cnn_advanced.api import AdvancedCNNAPI
+from src.models.base.api import BaseModelAPI
 
 
 def _clean_forwarded_args(raw_args: list[str]) -> list[str]:
@@ -23,7 +24,7 @@ def _clean_forwarded_args(raw_args: list[str]) -> list[str]:
 
 
 def _validate_model_folder(model_name: str) -> None:
-    model_dir = _ROOT / "models" / model_name
+    model_dir = _ROOT / "src" / "models" / model_name
     if not model_dir.is_dir():
         raise SystemExit(f"Error: Model directory not found: {model_dir}")
 
@@ -48,17 +49,17 @@ def _validate_model_folder(model_name: str) -> None:
 
 def _ensure_output_folders(model_name: str) -> None:
     """Creates output directories inside the model folder if they don't exist."""
-    model_dir = _ROOT / "models" / model_name
+    model_dir = _ROOT / "src" / "models" / model_name
     for folder in ["runs", "eval", "inference"]:
         (model_dir / folder).mkdir(exist_ok=True)
 
 
 def _get_model_api(model_name: str):
-    if model_name == "baseline_cnn":
+    if model_name == "cnn_baseline":
         return BaselineCNNAPI()
-    if model_name == "advanced_cnn":
+    if model_name == "cnn_advanced":
         return AdvancedCNNAPI()
-    raise SystemExit(f"Unknown model '{model_name}'. Available models: ['baseline_cnn', 'advanced_cnn']")
+    raise SystemExit(f"Unknown model '{model_name}'. Available models: ['cnn_baseline', 'cnn_advanced']")
 
 
 def _available_tasks(api_obj) -> list[str]:
@@ -75,7 +76,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Model gateway: choose a model and task, then forward task-specific args."
         )
     )
-    parser.add_argument("--model", type=str, default="baseline_cnn", help="Model name, e.g. baseline_cnn")
+    parser.add_argument("--model", type=str, default=None, help="Model name, e.g. cnn_baseline")
     parser.add_argument(
         "--task",
         type=str,
@@ -91,10 +92,19 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    _validate_model_folder(args.model)
-    _ensure_output_folders(args.model)
-    model_api = _get_model_api(args.model)
     task_name = args.task.strip().replace("-", "_")
+    
+    # Special bypass: prepare_data is model-agnostic, run it purely off BaseModelAPI.
+    if task_name == "prepare_data" and not args.model:
+        model_api = BaseModelAPI()
+    else:
+        if not args.model:
+            raise SystemExit(f"Error: You must specify --model when running the '{args.task}' task.")
+            
+        _validate_model_folder(args.model)
+        _ensure_output_folders(args.model)
+        model_api = _get_model_api(args.model)
+        
     if not hasattr(model_api, task_name):
         raise SystemExit(
             f"Task '{args.task}' is not available for model '{args.model}'. "

@@ -102,36 +102,6 @@ class FrameDataset(Dataset):
             cap.release()
 
 
-class BaselineCNN(nn.Module):
-    def __init__(self, num_classes: int):
-        super().__init__()
-        self.features = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=3, padding=1),
-            nn.BatchNorm2d(32),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2),
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.BatchNorm2d(128),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2),
-            nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True),
-            nn.AdaptiveAvgPool2d((1, 1)),
-        )
-        self.classifier = nn.Sequential(
-            nn.Flatten(),
-            nn.Dropout(p=0.3),
-            nn.Linear(256, num_classes),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.features(x)
-        return self.classifier(x)
 
 
 def parse_class_names(raw: str) -> list[str]:
@@ -160,13 +130,29 @@ def resolve_device(device_arg: str) -> torch.device:
     return torch.device(device_arg)
 
 
+import yaml
+
+def get_data_config() -> dict:
+    config_path = Path(__file__).parent / "data_config.yaml"
+    with open(config_path, "r") as f:
+        return yaml.safe_load(f)
+
 def get_transforms(image_size: int):
-    normalize = transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
+    config = get_data_config()
+    aug_cfg = config.get("augmentation", {})
+    
+    norm_cfg = aug_cfg.get("normalize", {"mean": [0.485, 0.456, 0.406], "std": [0.229, 0.224, 0.225]})
+    normalize = transforms.Normalize(mean=norm_cfg["mean"], std=norm_cfg["std"])
+    
+    flip_p = aug_cfg.get("random_horizontal_flip_p", 0.5)
+    
+    jitter_cfg = aug_cfg.get("color_jitter", {"brightness": 0.2, "contrast": 0.2, "saturation": 0.15})
+    
     train_tf = transforms.Compose(
         [
             transforms.Resize((image_size, image_size)),
-            transforms.RandomHorizontalFlip(p=0.5),
-            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.15),
+            transforms.RandomHorizontalFlip(p=flip_p),
+            transforms.ColorJitter(brightness=jitter_cfg["brightness"], contrast=jitter_cfg["contrast"], saturation=jitter_cfg["saturation"]),
             transforms.ToTensor(),
             normalize,
         ]
@@ -184,13 +170,48 @@ def get_transforms(image_size: int):
 def collect_samples(class_names: list[str], frames_per_video: int = 1) -> list[tuple[Path, int, int | None]]:
     import pandas as pd
     
-    csv_path = resolve_project_path("data/annotations.csv")
-    video_dir = resolve_project_path("data/downloaded-videos")
+    config = get_data_config()
+    
+    csv_path = resolve_project_path(config.get("data", {}).get("annotations_file", "data/annotations.csv"))
+    video_dir = resolve_project_path(config.get("data", {}).get("video_dir", "data/downloaded-videos"))
+    uniform_samples_per_class = config.get("preparation", {}).get("uniform_samples_per_class")
     
     if not csv_path.exists():
         raise FileNotFoundError(f"Annotations CSV not found at {csv_path}")
 
     df = pd.read_csv(csv_path)
+    
+    if uniform_samples_per_class == "auto":
+        class_counts = df['punch_type'].astype(str).str.strip().str.lower().value_counts()
+        target_counts = [class_counts.get(c.lower(), 0) for c in class_names]
+        uniform_samples_per_class = min(target_counts) if target_counts else 0
+        print(f"Auto-balancing classes. Setting uniform samples per class to: {uniform_samples_per_class}")
+
+    if uniform_samples_per_class is not None:
+        sampled_dfs = []
+        for class_name in class_names:
+            class_df = df[df['punch_type'].astype(str).str.strip().str.lower() == class_name.lower()]
+            if class_df.empty:
+                continue
+            
+            # Group by video_id and shuffle within each group
+            grouped = [group.sample(frac=1, random_state=42).reset_index(drop=True) 
+                       for _, group in class_df.groupby('video_id')]
+            
+            # Interleave frames from all videos to ensure perfect uniformity
+            interleaved = []
+            max_len = max((len(g) for g in grouped), default=0)
+            for i in range(max_len):
+                for g in grouped:
+                    if i < len(g):
+                        interleaved.append(g.iloc[i:i+1])
+            
+            if interleaved:
+                class_sampled = pd.concat(interleaved, ignore_index=True)
+                sampled_dfs.append(class_sampled.head(uniform_samples_per_class))
+                
+        if sampled_dfs:
+            df = pd.concat(sampled_dfs, ignore_index=True)
     
     samples: list[tuple[Path, int, int | None]] = []
     
@@ -205,9 +226,14 @@ def collect_samples(class_names: list[str], frames_per_video: int = 1) -> list[t
                 
         if class_idx != -1:
             video_id = str(row['video_id'])
-            video_path = video_dir / video_id
+            video_path = video_dir / f"{video_id}.mp4"
             if video_path.exists():
                 samples.append((video_path, class_idx, int(row['frame_index'])))
+            else:
+                # Fallback to no extension
+                video_path_no_ext = video_dir / video_id
+                if video_path_no_ext.exists():
+                    samples.append((video_path_no_ext, class_idx, int(row['frame_index'])))
 
     return samples
 
@@ -475,7 +501,7 @@ def load_checkpoint(path: Path, device: torch.device) -> dict:
     return torch.load(path, map_location=device)
 
 
-def train(args: argparse.Namespace) -> None:
+def train(args: argparse.Namespace, model_class: type[nn.Module]) -> None:
     class_names = parse_class_names(args.class_names)
 
     set_seed(args.seed)
@@ -532,7 +558,7 @@ def train(args: argparse.Namespace) -> None:
         else None
     )
 
-    model = BaselineCNN(num_classes=len(class_names)).to(device)
+    model = model_class(num_classes=len(class_names)).to(device)
     class_weights = (
         compute_class_weights(train_samples, len(class_names), device) if args.use_class_weights else None
     )
@@ -702,7 +728,7 @@ def train(args: argparse.Namespace) -> None:
     print(f"\nRun complete. Artifacts saved to: {run_dir}")
 
 
-def test_only(args: argparse.Namespace) -> None:
+def test_only(args: argparse.Namespace, model_class: type[nn.Module]) -> None:
     class_names_override = parse_class_names(args.class_names) if args.class_names else None
 
     device = resolve_device(args.device)
@@ -741,7 +767,7 @@ def test_only(args: argparse.Namespace) -> None:
         args.num_workers,
     )
 
-    model = BaselineCNN(num_classes=len(class_names)).to(device)
+    model = model_class(num_classes=len(class_names)).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
     criterion = nn.CrossEntropyLoss()
 
@@ -772,7 +798,7 @@ def test_only(args: argparse.Namespace) -> None:
     print(f"Saved test report to: {out_dir}")
 
 
-def validate_only(args: argparse.Namespace) -> None:
+def validate_only(args: argparse.Namespace, model_class: type[nn.Module]) -> None:
     class_names_override = parse_class_names(args.class_names) if args.class_names else None
 
     device = resolve_device(args.device)
@@ -784,28 +810,33 @@ def validate_only(args: argparse.Namespace) -> None:
             "--class-names must match the class order used during training checkpoint creation."
         )
     class_names = checkpoint_class_names
-    missing_val_classes = split_missing_classes(val_dir, class_names)
-    if missing_val_classes:
-        raise SystemExit(
-            "Missing class folders in val split: "
-            f"{missing_val_classes}. Expected under: {val_dir}"
-        )
-    val_samples = collect_samples(val_dir, class_names, frames_per_video=args.frames_per_video)
 
-    if not val_samples:
-        raise SystemExit(f"No validation images found under {val_dir} for class folders: {class_names}")
+    all_samples = collect_samples(class_names, frames_per_video=args.frames_per_video)
+    if not all_samples:
+        raise SystemExit(f"No samples found for classes: {class_names}")
+
+    test_ratio = float(args.splits.get("test", 0.15))
+    val_ratio = float(args.splits.get("val", 0.15))
+    temp_ratio = val_ratio + test_ratio
+
+    _, temp_samples = split_train_val_samples(all_samples, temp_ratio, args.seed)
+    # temp_samples represents val + test. Now split test from temp_samples.
+    val_samples, test_samples = split_train_val_samples(temp_samples, test_ratio / temp_ratio, args.seed)
+
+    if not test_samples:
+        raise SystemExit("Not enough samples to construct a test split.")
 
     image_size = int(checkpoint.get("image_size", args.image_size))
     _, eval_tf = get_transforms(image_size)
     val_loader = make_dataloader(
-        val_samples,
+        test_samples,
         eval_tf,
         args.batch_size,
         False,
         args.num_workers,
     )
 
-    model = BaselineCNN(num_classes=len(class_names)).to(device)
+    model = model_class(num_classes=len(class_names)).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
     criterion = nn.CrossEntropyLoss()
 

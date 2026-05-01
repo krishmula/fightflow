@@ -6,6 +6,7 @@ data/raw/RGB_videos/*
 !data/annotations.csv
 data/interim/
 data/downloaded-videos/*
+data/processed/frames/*
 !data/downloaded-videos/.gitkeep
 
 # ── Python virtual environments ───────────────────────────────────────────────
