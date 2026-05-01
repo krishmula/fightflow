@@ -1,0 +1,55 @@
+# ResNet-18 with Transfer Learning Configuration
+# Uses pretrained ResNet-18 from torchvision for better feature extraction
+
+common:
+  # ResNet-18 expects 224x224 inputs (matches our upgraded resolution)
+  image_size: 224
+  # Smaller batch size for transfer learning stability
+  batch_size: 16
+  # Number of subprocesses to use for data loading
+  num_workers: 2
+  # Hardware to use (auto, cpu, cuda, mps)
+  device: auto
+
+train:
+  # Comma-separated list of classes. 'not_jab' automatically groups negative classes.
+  class_names: straight,hook,uppercut,none
+  # Total number of training loops over the entire dataset
+  epochs: 30
+  # Smaller learning rate for fine-tuning pretrained model
+  lr: 0.0001
+  # Weight decay (L2 penalty) for the optimizer
+  weight_decay: 0.00001
+  splits:
+    # Fraction of data to use for training
+    train: 0.90
+    # Fraction of training data to use for validation
+    val: 0.05
+    # Fraction of test data to hold out
+    test: 0.05
+  # Epochs to wait for val_macro_f1 to improve before early stopping
+  patience: 10
+  # Epochs to wait before reducing the learning rate
+  lr_patience: 5
+  # Whether to compute and apply class weights to handle imbalanced datasets
+  use_class_weights: true
+  # Directory where run artifacts (checkpoints, metrics) will be saved
+  output_dir: runs/resnet18
+  # Subfolder prefix for the current run
+  run_name: resnet18_multiclass
+
+test:
+  # Path to the best checkpoint saved during training
+  checkpoint: runs/resnet18/REPLACE_WITH_RUN/checkpoints/best.pt
+  # Directory where the test metrics and report will be saved
+  report_dir: runs/resnet18/eval
+  # Name of the subfolder for this test run
+  run_name: test_resnet18_multiclass
+
+validate:
+  # Path to the best checkpoint saved during training
+  checkpoint: runs/resnet18/REPLACE_WITH_RUN/checkpoints/best.pt
+  # Directory where the validation metrics and report will be saved
+  report_dir: runs/resnet18/eval
+  # Name of the subfolder for this validation run
+  run_name: val_resnet18_multiclass
