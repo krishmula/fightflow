@@ -32,7 +32,7 @@ DEFAULT_EVAL_DIR = "models/baseline_cnn/eval"
 
 
 def project_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+    return Path(__file__).resolve().parents[3]
 
 
 def resolve_project_path(path_value: str | Path) -> Path:

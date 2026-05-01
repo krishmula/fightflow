@@ -26,13 +26,10 @@ from tqdm import tqdm
 DEFAULT_CLASS_NAMES = ["jab", "hook", "uppercut", "negative"]
 SUPPORTED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 SUPPORTED_VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".m4v", ".webm"}
-DEFAULT_DATA_ROOT = "data/classification/boxing4cls"
-DEFAULT_OUTPUT_DIR = "models/baseline_cnn/runs"
-DEFAULT_EVAL_DIR = "models/baseline_cnn/eval"
 
 
 def project_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+    return Path(__file__).resolve().parents[3]
 
 
 def resolve_project_path(path_value: str | Path) -> Path:

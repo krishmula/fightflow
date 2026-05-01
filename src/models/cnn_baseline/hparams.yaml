@@ -18,7 +18,7 @@ train:
   # Comma-separated list of classes. 'not_jab' automatically groups negative classes.
   class_names: straight,hook,uppercut,none
   # Total number of training loops over the entire dataset
-  epochs: 30
+  epochs: 50
   # Learning rate for the AdamW optimizer
   lr: 0.001
   # Weight decay (L2 penalty) for the optimizer

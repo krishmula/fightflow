@@ -20,7 +20,7 @@ classes: ["straight", "hook", "uppercut", "none"]
 #       unique videos for a given class. It interleaves frames from different videos
 #       to ensure maximum diversity and avoids front-loading frames from a single video.
 preparation:
-  uniform_samples_per_class: 20
+  uniform_samples_per_class: "auto"
 
 # Data Augmentation Configuration
 augmentation:
