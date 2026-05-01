@@ -1,16 +1,10 @@
-# Baseline CNN model config
-# Usage:
-#   .venv/bin/python main.py --model baseline_cnn --task train
-
 common:
-  # Target width and height to resize all frames
-  image_size: 128
-  # Number of samples per batch
-  batch_size: 16
+  # Target width and height to resize all frames (increased for better detail)
+  image_size: 224
+  # Number of samples per batch (reduced for larger images)
+  batch_size: 8
   # Number of subprocesses to use for data loading
   num_workers: 2
-  # Number of frames to extract from each video (1 = middle frame)
-  frames_per_video: 10
   # Hardware to use (auto, cpu, cuda, mps)
   device: auto
 
@@ -18,9 +12,9 @@ train:
   # Comma-separated list of classes. 'not_jab' automatically groups negative classes.
   class_names: straight,hook,uppercut,none
   # Total number of training loops over the entire dataset
-  epochs: 30
-  # Learning rate for the AdamW optimizer
-  lr: 0.001
+  epochs: 50
+  # Learning rate for the AdamW optimizer (lower for deeper network)
+  lr: 0.0005
   # Weight decay (L2 penalty) for the optimizer
   weight_decay: 0.0001
   splits:
@@ -31,28 +25,28 @@ train:
     # Fraction of test data to hold out
     test: 0.05
   # Epochs to wait for val_macro_f1 to improve before early stopping
-  patience: 5
+  patience: 10
   # Epochs to wait before reducing the learning rate
-  lr_patience: 2
+  lr_patience: 4
   # Whether to compute and apply class weights to handle imbalanced datasets
   use_class_weights: true
   # Directory where run artifacts (checkpoints, metrics) will be saved
-  output_dir: models/advanced_cnn/runs
+  output_dir: runs/cnn_advanced
   # Subfolder prefix for the current run
   run_name: advanced_multiclass
 
 test:
   # Path to the best checkpoint saved during training
-  checkpoint: models/advanced_cnn/runs/advanced_jab_vs_not_jab_20260424_171243/checkpoints/best.pt
+  checkpoint: runs/cnn_advanced/REPLACE_WITH_RUN/checkpoints/best.pt
   # Directory where the test metrics and report will be saved
-  report_dir: models/advanced_cnn/eval
+  report_dir: runs/cnn_advanced/eval
   # Name of the subfolder for this test run
-  run_name: test_jab_vs_not_jab
+  run_name: test_advanced_multiclass
 
 validate:
   # Path to the best checkpoint saved during training
-  checkpoint: models/baseline_cnn/runs/REPLACE_WITH_RUN/checkpoints/best.pt
+  checkpoint: runs/cnn_advanced/REPLACE_WITH_RUN/checkpoints/best.pt
   # Directory where the validation metrics and report will be saved
-  report_dir: models/baseline_cnn/eval
+  report_dir: runs/cnn_advanced/eval
   # Name of the subfolder for this validation run
-  run_name: val_jab_vs_not_jab
+  run_name: val_advanced_multiclass

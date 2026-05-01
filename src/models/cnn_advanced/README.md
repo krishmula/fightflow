@@ -43,3 +43,27 @@ python main.py --model cnn_advanced --task train
 ```bash
 python main.py --model cnn_advanced --task test
 ```
+
+## Model Improvements Timeline
+
+### Initial Architecture (April 2026)
+- Basic residual CNN with 2 residual blocks
+- 128x128 input resolution
+- Simple classifier head
+- Binary classification achieved 0.89 F1 score
+- Multiclass struggled with uppercut detection (poor performance)
+
+### Architecture Enhancements (April 30, 2026)
+- Added attention mechanism for better feature focusing
+- Increased depth to 3 residual blocks
+- Enhanced classifier with batch normalization and dropout
+- Multiclass performance improved to 0.73 F1 score
+
+### Major Improvements (May 1, 2026)
+- Increased input resolution to 224x224 for better detail
+- Added deeper feature extraction (1024 channels)
+- Implemented stronger regularization (dropout 0.5, batch norm)
+- Fixed data splits (90% train, 5% val, 5% test)
+- Best multiclass performance: 0.88 F1 score with 77.8% test accuracy
+- Uppercut detection improved from 0.63 to 0.80 F1 score
+- Hook detection improved from 0.56 to 0.67 F1 score

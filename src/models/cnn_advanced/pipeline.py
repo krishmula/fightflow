@@ -38,32 +38,48 @@ class ResidualBlock(nn.Module):
 class AdvancedCNN(nn.Module):
     def __init__(self, num_classes: int):
         super().__init__()
-        # Initial block: Larger kernel to see more of the body early on
+        # Initial block: Larger kernel to capture broader motion context
         self.block1 = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=5, stride=2, padding=2, bias=False),
+            nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2)
+            nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         )
         
-        # Residual blocks
+        # Deeper residual blocks for better feature extraction
         self.res1 = ResidualBlock(64, 128, stride=2)
         self.res2 = ResidualBlock(128, 256, stride=2)
+        self.res3 = ResidualBlock(256, 512, stride=2)
         
-        # Final conv and pooling
+        # Attention mechanism for focusing on motion-relevant features
+        self.attention = nn.Sequential(
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.Flatten(),
+            nn.Linear(512, 512),
+            nn.ReLU(inplace=True),
+            nn.Linear(512, 512),
+            nn.Sigmoid()
+        )
+        
+        # Enhanced feature processing
         self.features = nn.Sequential(
-            nn.Conv2d(256, 512, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(512),
+            nn.Conv2d(512, 1024, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(1024),
             nn.ReLU(inplace=True),
             nn.AdaptiveAvgPool2d((1, 1))
         )
         
-        # More robust classifier
+        # More sophisticated classifier with better regularization
         self.classifier = nn.Sequential(
             nn.Flatten(),
-            nn.Dropout(p=0.4),
+            nn.Dropout(p=0.5),  # Increased dropout
+            nn.Linear(1024, 512),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm1d(512),  # Added batch norm
+            nn.Dropout(p=0.3),
             nn.Linear(512, 256),
             nn.ReLU(inplace=True),
+            nn.BatchNorm1d(256),  # Added batch norm
             nn.Dropout(p=0.2),
             nn.Linear(256, num_classes)
         )
@@ -72,6 +88,13 @@ class AdvancedCNN(nn.Module):
         x = self.block1(x)
         x = self.res1(x)
         x = self.res2(x)
+        x = self.res3(x)
+        
+        # Apply attention
+        att_weights = self.attention(x)
+        att_weights = att_weights.view(x.size(0), 512, 1, 1)
+        x = x * att_weights
+        
         x = self.features(x)
         return self.classifier(x)
 

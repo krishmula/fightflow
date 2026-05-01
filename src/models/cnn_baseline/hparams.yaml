@@ -37,22 +37,22 @@ train:
   # Whether to compute and apply class weights to handle imbalanced datasets
   use_class_weights: true
   # Directory where run artifacts (checkpoints, metrics) will be saved
-  output_dir: models/baseline_cnn/runs
+  output_dir: runs/cnn_baseline
   # Subfolder prefix for the current run
   run_name: baseline_multiclass
 
 test:
   # Path to the best checkpoint saved during training
-  checkpoint: models/baseline_cnn/runs/REPLACE_WITH_RUN/checkpoints/best.pt
+  checkpoint: runs/cnn_baseline/REPLACE_WITH_RUN/checkpoints/best.pt
   # Directory where the test metrics and report will be saved
-  report_dir: models/baseline_cnn/eval
+  report_dir: runs/cnn_baseline/eval
   # Name of the subfolder for this test run
-  run_name: test_jab_vs_not_jab
+  run_name: test_baseline_multiclass
 
 validate:
   # Path to the best checkpoint saved during training
-  checkpoint: models/baseline_cnn/runs/REPLACE_WITH_RUN/checkpoints/best.pt
+  checkpoint: runs/cnn_baseline/REPLACE_WITH_RUN/checkpoints/best.pt
   # Directory where the validation metrics and report will be saved
-  report_dir: models/baseline_cnn/eval
+  report_dir: runs/cnn_baseline/eval
   # Name of the subfolder for this validation run
-  run_name: val_jab_vs_not_jab
+  run_name: val_baseline_multiclass

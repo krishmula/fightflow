@@ -41,3 +41,21 @@ python main.py --model cnn_baseline --task train
 ```bash
 python main.py --model cnn_baseline --task test
 ```
+
+## Model Improvements Timeline
+
+### Initial Setup (April 2026)
+- Basic CNN architecture with 128x128 input resolution
+- Simple data augmentation (horizontal flip, color jitter)
+- Binary classification achieved 0.87 F1 score
+
+### Data Pipeline Fixes (April 30, 2026)
+- Fixed path resolution bugs in data loading
+- Implemented automatic class balancing (uniform_samples_per_class: "auto")
+- Multiclass classification improved from poor performance to 0.72 F1 score
+
+### Training Stability (May 1, 2026)
+- Increased training epochs from 30 to 50
+- Adjusted data splits to 90% train, 5% val, 5% test
+- Improved early stopping patience and learning rate scheduling
+- Best multiclass performance: 0.72 F1 score with 72.8% test accuracy

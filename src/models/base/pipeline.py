@@ -392,12 +392,14 @@ def make_dataloader(
     num_workers: int,
 ) -> DataLoader:
     ds = FrameDataset(samples=samples, transform=transform)
+    # MPS doesn't support pinned memory, so disable it for MPS devices
+    pin_memory = not torch.backends.mps.is_available()
     return DataLoader(
         ds,
         batch_size=batch_size,
         shuffle=shuffle,
         num_workers=num_workers,
-        pin_memory=True,
+        pin_memory=pin_memory,
     )
 
 
