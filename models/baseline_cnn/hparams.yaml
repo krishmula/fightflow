@@ -3,8 +3,6 @@
 #   .venv/bin/python main.py --model baseline_cnn --task train
 
 common:
-  # Base directory containing train/val/test splits
-  data_root: data/classification/boxing4cls
   # Target width and height to resize all frames
   image_size: 128
   # Number of samples per batch
@@ -18,15 +16,20 @@ common:
 
 train:
   # Comma-separated list of classes. 'not_jab' automatically groups negative classes.
-  class_names: jab,not_jab
+  class_names: straight,hook,uppercut,none
   # Total number of training loops over the entire dataset
   epochs: 30
   # Learning rate for the AdamW optimizer
   lr: 0.001
   # Weight decay (L2 penalty) for the optimizer
   weight_decay: 0.0001
-  # Fraction of training data to use for validation if `val` folder is empty
-  val_ratio: 0.2
+  splits:
+    # Fraction of data to use for training
+    train: 0.90
+    # Fraction of training data to use for validation
+    val: 0.05
+    # Fraction of test data to hold out
+    test: 0.05
   # Epochs to wait for val_macro_f1 to improve before early stopping
   patience: 5
   # Epochs to wait before reducing the learning rate
@@ -36,7 +39,7 @@ train:
   # Directory where run artifacts (checkpoints, metrics) will be saved
   output_dir: models/baseline_cnn/runs
   # Subfolder prefix for the current run
-  run_name: baseline_jab_vs_not_jab
+  run_name: baseline_multiclass
 
 test:
   # Path to the best checkpoint saved during training
@@ -53,21 +56,3 @@ validate:
   report_dir: models/baseline_cnn/eval
   # Name of the subfolder for this validation run
   run_name: val_jab_vs_not_jab
-
-inference:
-  # Path to the best checkpoint saved during training
-  checkpoint: models/baseline_cnn/runs/baseline_jab_vs_not_jab_20260424_161143/checkpoints/best.pt
-  # Path to the raw video you want to classify
-  input_video: data/classification/boxing4cls/inference/input_sample.mov
-  # Path where the labeled output video should be saved
-  output_video: models/baseline_cnn/inference/output_labeled.mov
-  # Architecture to use for the frame extraction/inference
-  model_name: resnet18
-  # Weights to load for the architecture
-  weights: DEFAULT
-  # Process 1 frame every N frames (higher = faster but choppy labels)
-  frame_stride: 1
-  # OpenCV video codec for output (e.g., mp4v)
-  codec: mp4v
-  # Output frames per second (0 uses the original video's FPS)
-  fps: 0

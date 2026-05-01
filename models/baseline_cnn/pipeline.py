@@ -181,76 +181,35 @@ def get_transforms(image_size: int):
     return train_tf, eval_tf
 
 
-def collect_samples(split_dir: Path, class_names: list[str], frames_per_video: int = 1) -> list[tuple[Path, int, int | None]]:
+def collect_samples(class_names: list[str], frames_per_video: int = 1) -> list[tuple[Path, int, int | None]]:
+    import pandas as pd
+    
+    csv_path = resolve_project_path("data/annotations.csv")
+    video_dir = resolve_project_path("data/downloaded-videos")
+    
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Annotations CSV not found at {csv_path}")
+
+    df = pd.read_csv(csv_path)
+    
     samples: list[tuple[Path, int, int | None]] = []
-    for class_idx, class_name in enumerate(class_names):
-        source_dirs = resolve_class_source_dirs(split_dir, class_name)
-        for class_dir in source_dirs:
-            for path in sorted(class_dir.rglob("*")):
-                if not path.is_file():
-                    continue
+    
+    for _, row in df.iterrows():
+        punch_type = str(row['punch_type']).strip().lower()
+            
+        class_idx = -1
+        for i, cname in enumerate(class_names):
+            if cname.strip().lower() == punch_type:
+                class_idx = i
+                break
                 
-                suffix = path.suffix.lower()
-                if suffix in SUPPORTED_IMAGE_EXTS:
-                    samples.append((path, class_idx, None))
-                elif suffix in SUPPORTED_VIDEO_EXTS:
-                    if frames_per_video <= 1:
-                        samples.append((path, class_idx, None))
-                    else:
-                        cap = cv2.VideoCapture(str(path))
-                        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                        cap.release()
-                        
-                        if frame_count <= 0:
-                            continue
-                            
-                        # Sample N frames linearly
-                        indices = np.linspace(0, frame_count - 1, frames_per_video, dtype=int)
-                        for idx in indices:
-                            samples.append((path, class_idx, int(idx)))
+        if class_idx != -1:
+            video_id = str(row['video_id'])
+            video_path = video_dir / video_id
+            if video_path.exists():
+                samples.append((video_path, class_idx, int(row['frame_index'])))
+
     return samples
-
-
-def split_missing_classes(split_dir: Path, class_names: list[str]) -> list[str]:
-    return [class_name for class_name in class_names if not resolve_class_source_dirs(split_dir, class_name)]
-
-
-def resolve_class_source_dirs(split_dir: Path, class_name: str) -> list[Path]:
-    """Map class names to one or more source folders inside a split directory.
-
-    Special case:
-    - class_name == "not_jab": combines all non-jab directories in that split,
-      and also includes an explicit "not_jab" folder if present.
-    """
-    cname = class_name.strip().lower()
-    if cname != "not_jab":
-        d = split_dir / cname
-        return [d] if d.is_dir() else []
-
-    source_dirs: list[Path] = []
-    explicit = split_dir / "not_jab"
-    if explicit.is_dir():
-        source_dirs.append(explicit)
-
-    if split_dir.is_dir():
-        for child in sorted(split_dir.iterdir()):
-            if not child.is_dir():
-                continue
-            nm = child.name.strip().lower()
-            if nm in {"jab", "not_jab"}:
-                continue
-            source_dirs.append(child)
-
-    # de-duplicate while preserving order
-    unique: list[Path] = []
-    seen: set[str] = set()
-    for d in source_dirs:
-        key = str(d.resolve())
-        if key not in seen:
-            seen.add(key)
-            unique.append(d)
-    return unique
-
 
 def split_train_val_samples(
     train_samples: list[tuple[Path, int, int | None]], val_ratio: float, seed: int
@@ -518,10 +477,6 @@ def load_checkpoint(path: Path, device: torch.device) -> dict:
 
 def train(args: argparse.Namespace) -> None:
     class_names = parse_class_names(args.class_names)
-    data_root = resolve_project_path(args.data_root)
-    train_dir = data_root / "train"
-    val_dir = data_root / "val"
-    test_dir = data_root / "test"
 
     set_seed(args.seed)
     if args.epochs < 1:
@@ -529,36 +484,26 @@ def train(args: argparse.Namespace) -> None:
     device = resolve_device(args.device)
     print(f"Using device: {device}")
 
-    missing_train_classes = split_missing_classes(train_dir, class_names)
-    if missing_train_classes:
-        raise SystemExit(
-            "Missing required class folders in train split: "
-            f"{missing_train_classes}. Expected under: {train_dir}"
-        )
+    splits = getattr(args, "splits", {"train": 0.70, "val": 0.15, "test": 0.15})
+    val_ratio = splits.get("val", 0.15)
+    test_ratio = splits.get("test", 0.15)
+    temp_ratio = val_ratio + test_ratio
 
-    train_samples = collect_samples(train_dir, class_names, frames_per_video=args.frames_per_video)
-    if not train_samples:
-        raise SystemExit(
-            f"No training images found under {train_dir}. Expected class folders: {class_names}"
-        )
-
-    val_samples = collect_samples(val_dir, class_names, frames_per_video=args.frames_per_video)
-    missing_val_classes = split_missing_classes(val_dir, class_names)
-    if missing_val_classes:
-        print(f"Warning: missing val class folders: {missing_val_classes}")
-    if not val_samples:
-        print("Validation folder is empty. Creating validation split from train set.")
-        train_samples, val_samples = split_train_val_samples(train_samples, args.val_ratio, args.seed)
-
-    test_samples = collect_samples(test_dir, class_names, frames_per_video=args.frames_per_video)
-    missing_test_classes = split_missing_classes(test_dir, class_names)
-    if missing_test_classes:
-        print(f"Warning: missing test class folders: {missing_test_classes}")
-    if not test_samples:
-        print(f"Warning: no test images found under {test_dir}; training will continue without test evaluation.")
-
-    if not val_samples:
-        raise SystemExit("Validation set is empty. Add val images or increase --val-ratio.")
+    all_samples = collect_samples(class_names, frames_per_video=args.frames_per_video)
+    if not all_samples:
+        raise SystemExit("No samples found in annotations.csv")
+        
+    if temp_ratio > 0:
+        train_samples, temp_samples = split_train_val_samples(all_samples, temp_ratio, args.seed)
+        if test_ratio > 0:
+            val_samples, test_samples = split_train_val_samples(temp_samples, test_ratio / temp_ratio, args.seed)
+        else:
+            val_samples = temp_samples
+            test_samples = []
+    else:
+        train_samples = all_samples
+        val_samples = []
+        test_samples = []
 
     train_tf, eval_tf = get_transforms(args.image_size)
     train_loader = make_dataloader(
@@ -609,7 +554,6 @@ def train(args: argparse.Namespace) -> None:
 
     config_payload = {
         "class_names": class_names,
-        "data_root": str(data_root),
         "train_samples": len(train_samples),
         "val_samples": len(val_samples),
         "test_samples": len(test_samples),
@@ -760,8 +704,6 @@ def train(args: argparse.Namespace) -> None:
 
 def test_only(args: argparse.Namespace) -> None:
     class_names_override = parse_class_names(args.class_names) if args.class_names else None
-    data_root = resolve_project_path(args.data_root)
-    test_dir = data_root / "test"
 
     device = resolve_device(args.device)
     checkpoint_path = resolve_project_path(args.checkpoint)
@@ -772,16 +714,22 @@ def test_only(args: argparse.Namespace) -> None:
             "--class-names must match the class order used during training checkpoint creation."
         )
     class_names = checkpoint_class_names
-    missing_test_classes = split_missing_classes(test_dir, class_names)
-    if missing_test_classes:
-        raise SystemExit(
-            "Missing class folders in test split: "
-            f"{missing_test_classes}. Expected under: {test_dir}"
-        )
-    test_samples = collect_samples(test_dir, class_names, frames_per_video=args.frames_per_video)
+    splits = getattr(args, "splits", {"train": 0.70, "val": 0.15, "test": 0.15})
+    val_ratio = splits.get("val", 0.15)
+    test_ratio = splits.get("test", 0.15)
+    temp_ratio = val_ratio + test_ratio
+    seed = getattr(args, 'seed', 42)
+    
+    # Recreate the exact same split using identical seed
+    all_samples = collect_samples(class_names, frames_per_video=args.frames_per_video)
+    if temp_ratio > 0 and test_ratio > 0:
+        _, temp_samples = split_train_val_samples(all_samples, temp_ratio, seed)
+        _, test_samples = split_train_val_samples(temp_samples, test_ratio / temp_ratio, seed)
+    else:
+        test_samples = []
 
     if not test_samples:
-        raise SystemExit(f"No test images found under {test_dir} for class folders: {class_names}")
+        raise SystemExit(f"No test images configured based on test_ratio: {test_ratio} or not found.")
 
     image_size = int(checkpoint.get("image_size", args.image_size))
     _, eval_tf = get_transforms(image_size)
@@ -826,8 +774,6 @@ def test_only(args: argparse.Namespace) -> None:
 
 def validate_only(args: argparse.Namespace) -> None:
     class_names_override = parse_class_names(args.class_names) if args.class_names else None
-    data_root = resolve_project_path(args.data_root)
-    val_dir = data_root / "val"
 
     device = resolve_device(args.device)
     checkpoint_path = resolve_project_path(args.checkpoint)

@@ -10,7 +10,6 @@ from typing import Callable
 import yaml
 
 from models.advanced_cnn import pipeline as baseline_impl
-from models.advanced_cnn import inference as inference_impl
 
 
 class AdvancedCNNAPI:
@@ -27,8 +26,6 @@ class AdvancedCNNAPI:
     def validate(self, raw_args: list[str]) -> int:
         return self._invoke(mode="validate", raw_args=raw_args, runner=baseline_impl.validate_only)
 
-    def inference(self, raw_args: list[str]) -> int:
-        return self._invoke(mode="inference", raw_args=raw_args, runner=inference_impl.main)
 
     @staticmethod
     def _clean_args(raw_args: list[str]) -> list[str]:
@@ -79,7 +76,7 @@ class AdvancedCNNAPI:
 
     @staticmethod
     def _select_mode_config(payload: dict, mode: str) -> dict:
-        mode_keys = {"common", "train", "test", "validate", "inference"}
+        mode_keys = {"common", "train", "test", "validate"}
         if any(k in payload for k in mode_keys):
             out: dict = {}
             common = payload.get("common", {})
@@ -129,7 +126,7 @@ class AdvancedCNNAPI:
         defaults = {
             "seed": 42,
             "device": "auto",
-            "val_ratio": 0.2,
+            "splits": {"train": 0.70, "val": 0.15, "test": 0.15},
             "patience": 6,
             "lr_patience": 2,
             "use_class_weights": False,

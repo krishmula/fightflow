@@ -1,6 +1,7 @@
-# Baseline CNN Training and Testing Pipeline
+# CNN Training and Testing Pipeline
 
-This baseline keeps all dataset assets under the existing `data/` folder.
+This model trains directly on raw video frames mapped by `data/annotations.csv`.
+There is no need for pre-cut folders or intermediate split directories.
 
 ## Model API Structure
 
@@ -8,10 +9,10 @@ Model code is organized per model folder, so each model can expose an API-like s
 
 ```text
 models/
-  baseline_cnn/
+  [model_name]_cnn/
     api.py
     pipeline.py
-    inference.py
+    hparams.yaml
 ```
 
 The gateway calls a selected model + task directly:
@@ -20,34 +21,25 @@ The gateway calls a selected model + task directly:
 main.py
 ```
 
-## Folder layout
+## Data Loading & Splitting
 
-Place media files (videos or images) in this structure:
+The model directly reads `data/annotations.csv` and slices frames on the fly from `data/downloaded-videos/`.
 
-```text
-data/classification/boxing4cls/
-  train/
-    jab/
-    hook/
-    uppercut/
-    negative/
-  val/
-    jab/
-    hook/
-    uppercut/
-    negative/
-  test/
-    jab/
-    hook/
-    uppercut/
-    negative/
+Data splits are handled dynamically and can be configured natively inside `hparams.yaml` using the `splits:` block:
+
+```yaml
+train:
+  class_names: straight,hook,uppercut,none
+  splits:
+    train: 0.70
+    val: 0.15
+    test: 0.15
 ```
 
 Notes:
-- Every split should contain all 4 class folders.
-- You can place full videos directly in class folders; training/testing will sample frames internally.
-- If `val/` has no media, the script auto-splits a validation subset from `train/`.
-- Test evaluation is skipped during training if `test/` has no media.
+- `straight` is natively used instead of `jab`. No manual mapping is performed behind the scenes.
+- Classes are mapped strictly to the strings provided in `class_names`.
+- Random seed for splits is configured in `hparams.yaml` or passed via CLI argument `--seed`.
 
 ## Train
 
@@ -71,20 +63,18 @@ Useful options:
 
 ## YAML Hyperparameters
 
-The model's settings, including paths and hyperparameters, are strictly controlled by `models/baseline_cnn/hparams.yaml`.
+The model's settings, including paths and hyperparameters, are controlled by `hparams.yaml`.
 
-You can modify settings like `epochs`, `batch_size`, or `learning_rate` directly in this file.
+You can modify settings like `epochs`, `batch_size`, or `splits` directly in this file.
 
-### Binary Setup: Jab vs Not Jab
+### Multi-Class Setup
 
-To train a binary classifier, change the `class_names` under the `train:` section in `hparams.yaml` to:
+The model natively trains on the four standard classes found in your dataset:
 
 ```yaml
-class_names: jab,not_jab
+train:
+  class_names: straight,hook,uppercut,none
 ```
-
-`not_jab` is handled automatically as all non-jab folders in each split
-(`hook`, `uppercut`, `negative`, etc.), plus an optional explicit `not_jab/` folder.
 
 ## Test
 
@@ -100,14 +90,6 @@ Evaluates the checkpoint defined under `validate:` in `hparams.yaml`:
 
 ```bash
 .venv/bin/python main.py --model baseline_cnn --task validate
-```
-
-## Video Inference
-
-Runs visual inference over a raw video (paths defined under `inference:` in `hparams.yaml`) and renders bounding boxes/labels:
-
-```bash
-.venv/bin/python main.py --model baseline_cnn --task inference
 ```
 
 ## Outputs
