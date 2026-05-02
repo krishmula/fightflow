@@ -22,11 +22,11 @@ train:
   weight_decay: 0.00001
   splits:
     # Fraction of data to use for training
-    train: 0.90
+    train: 0.70
     # Fraction of training data to use for validation
-    val: 0.05
+    val: 0.15
     # Fraction of test data to hold out
-    test: 0.05
+    test: 0.15
   # Epochs to wait for val_macro_f1 to improve before early stopping
   patience: 10
   # Epochs to wait before reducing the learning rate

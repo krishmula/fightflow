@@ -14,6 +14,7 @@ if str(_ROOT) not in sys.path:
 from src.models.cnn_baseline.api import BaselineCNNAPI
 from src.models.cnn_advanced.api import AdvancedCNNAPI
 from src.models.resnet18.api import ResNet18API
+from src.models.vgg_16.api import VGG16API
 from src.models.base.api import BaseModelAPI
 
 
@@ -62,7 +63,12 @@ def _get_model_api(model_name: str):
         return AdvancedCNNAPI()
     if model_name == "resnet18":
         return ResNet18API()
-    raise SystemExit(f"Unknown model '{model_name}'. Available models: ['cnn_baseline', 'cnn_advanced', 'resnet18']")
+    if model_name == "vgg_16":
+        return VGG16API()
+    raise SystemExit(
+        f"Unknown model '{model_name}'. Available models: "
+        "['cnn_baseline', 'cnn_advanced', 'resnet18', 'vgg_16']"
+    )
 
 
 def _available_tasks(api_obj) -> list[str]:

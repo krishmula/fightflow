@@ -1,0 +1,33 @@
+# VGG-16 with transfer learning — ImageNet pretrained, 224×224 inputs.
+
+common:
+  image_size: 224
+  batch_size: 16
+  num_workers: 2
+  device: auto
+
+train:
+  class_names: straight,hook,uppercut,none
+  epochs: 30
+  lr: 0.0001
+  weight_decay: 0.00001
+  splits:
+    train: 0.70
+    val: 0.15
+    test: 0.15
+  patience: 10
+  lr_patience: 5
+  use_class_weights: true
+  use_attention: false
+  output_dir: runs/vgg_16
+  run_name: vgg_16_multiclass
+
+test:
+  checkpoint: runs/vgg_16/REPLACE_WITH_RUN/checkpoints/best.pt
+  report_dir: runs/vgg_16/eval
+  run_name: test_vgg_16_multiclass
+
+validate:
+  checkpoint: runs/vgg_16/REPLACE_WITH_RUN/checkpoints/best.pt
+  report_dir: runs/vgg_16/eval
+  run_name: val_vgg_16_multiclass
