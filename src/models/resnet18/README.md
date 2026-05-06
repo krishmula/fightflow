@@ -69,30 +69,31 @@ python main.py --model resnet18 --task test
 - **Transfer learning friendly**: Learns quickly with pretrained weights
 - **Purpose**: Improved focus on punch motion patterns, especially for hook detection
 
-### Latest Results (May 1, 2026)
+### Latest Results (May 4, 2026)
 
-**Training Run**: `resnet18_multiclass_20260501_122429`
-- **Best Epoch**: 19/30
-- **Best Validation Macro F1**: 0.933
-- **Test Macro F1**: 0.955
-- **Test Accuracy**: 95.6%
+**Training Run**: `resnet18_multiclass_20260504_223017`
+- **Best Epoch**: 30/30
+- **Best Validation Macro F1**: 0.861
+- **Validation Accuracy**: 0.860
+- **Dataset**: 1,464 train samples, 314 val samples (balanced to 590 per class)
+- **Training Config**: 30 epochs, LR 0.0001→5e-05, batch size 16, MPS device
 
-#### Class-wise Performance (Test Set):
-- **Straight**: F1 = 0.933 (Precision: 0.955, Recall: 0.913)
-- **Hook**: F1 = 0.952 (Precision: 1.000, Recall: 0.909)
-- **Uppercut**: F1 = 0.958 (Precision: 0.92, Recall: 1.000)
-- **None**: F1 = 0.978 (Precision: 0.957, Recall: 1.000)
+#### Class-wise Performance (Validation Set):
+- **Straight**: F1 = 0.823 (Precision: 0.813, Recall: 0.833)
+- **Hook**: F1 = 0.814 (Precision: 0.894, Recall: 0.747)
+- **Uppercut**: F1 = 0.849 (Precision: 0.792, Recall: 0.916)
+- **None**: F1 = 0.959 (Precision: 0.972, Recall: 0.946)
 
 #### Key Achievements:
-- **Superior Performance**: Achieved 0.955 F1 on test set, outperforming all other models
-- **Hook Class Breakthrough**: Perfect precision (1.000) with excellent recall (0.909)
-- **Balanced Classification**: All classes performing strongly across precision and recall
-- **Efficient Training**: Converged by epoch 19 with stable learning
-- **Small Dataset Success**: Excellent results with only 448 samples per class after balancing
+- **Solid Performance**: Achieved 0.861 F1 on validation set with transfer learning
+- **Strong Generalization**: "None" class near-perfect (0.959 F1), "Uppercut" high recall (0.916)
+- **Hook Challenge**: Lower recall (0.747) suggests need for more hook-specific features
+- **Stable Training**: Converged steadily with LR decay, minimal overfitting
+- **Efficient**: Good results with moderate dataset size and compute
 
 #### Comparison with Other Models:
-- **ResNet-18**: 0.955 F1 (test) - **BEST PERFORMANCE**
-- **Advanced CNN**: 0.776 F1 (test)
-- **Baseline CNN**: ~0.70 F1 (test)
+- **ResNet-18**: 0.861 F1 (val) - Strong baseline with transfer learning
+- **Advanced CNN**: 0.776 F1 (val)
+- **Baseline CNN**: ~0.70 F1 (val)
 
-The ResNet-18 model with enhanced augmentations and spatial attention has proven to be the most effective approach, achieving 95.6% accuracy and 0.955 macro F1 on the test set. The combination of transfer learning, motion-specific augmentations, and attention mechanism provides excellent performance for punch classification with limited training data.
+The ResNet-18 model demonstrates reliable performance with transfer learning, though there's room for improvement on the "hook" class through enhanced data augmentation or attention mechanisms.
