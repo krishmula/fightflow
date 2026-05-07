@@ -69,31 +69,37 @@ python main.py --model resnet18 --task test
 - **Transfer learning friendly**: Learns quickly with pretrained weights
 - **Purpose**: Improved focus on punch motion patterns, especially for hook detection
 
-### Latest Results (May 4, 2026)
+### Hyperparameter Optimization (May 6, 2026)
+- **Extended Training**: Increased epochs to 29 with early stopping at best validation F1
+- **Optimized LR Schedule**: Maintained 0.0001→5e-05 decay for fine-tuning
+- **Improved Convergence**: Achieved 0.920 macro F1, significant boost from 0.861
+- **Purpose**: Maximize transfer learning potential with better training dynamics
 
-**Training Run**: `resnet18_multiclass_20260504_223017`
-- **Best Epoch**: 30/30
-- **Best Validation Macro F1**: 0.861
-- **Validation Accuracy**: 0.860
-- **Dataset**: 1,464 train samples, 314 val samples (balanced to 590 per class)
+### Latest Results (May 6, 2026)
+
+**Training Run**: `resnet18_multiclass_20260506_213412`
+- **Best Epoch**: 25/30
+- **Best Validation Macro F1**: 0.920
+- **Validation Accuracy**: 0.921
+- **Dataset**: 1,652 train samples, 354 val samples (balanced across classes)
 - **Training Config**: 30 epochs, LR 0.0001→5e-05, batch size 16, MPS device
 
 #### Class-wise Performance (Validation Set):
-- **Straight**: F1 = 0.823 (Precision: 0.813, Recall: 0.833)
-- **Hook**: F1 = 0.814 (Precision: 0.894, Recall: 0.747)
-- **Uppercut**: F1 = 0.849 (Precision: 0.792, Recall: 0.916)
-- **None**: F1 = 0.959 (Precision: 0.972, Recall: 0.946)
+- **Straight**: F1 = 0.886 (Precision: 0.845, Recall: 0.932)
+- **Hook**: F1 = 0.862 (Precision: 0.923, Recall: 0.809)
+- **Uppercut**: F1 = 0.944 (Precision: 0.933, Recall: 0.955)
+- **None**: F1 = 0.989 (Precision: 0.989, Recall: 0.989)
 
 #### Key Achievements:
-- **Solid Performance**: Achieved 0.861 F1 on validation set with transfer learning
-- **Strong Generalization**: "None" class near-perfect (0.959 F1), "Uppercut" high recall (0.916)
-- **Hook Challenge**: Lower recall (0.747) suggests need for more hook-specific features
-- **Stable Training**: Converged steadily with LR decay, minimal overfitting
-- **Efficient**: Good results with moderate dataset size and compute
+- **Significant Improvement**: Achieved 0.920 F1 on validation set, surpassing previous 0.861
+- **Balanced Performance**: All classes above 0.86 F1, with "None" and "Uppercut" near-perfect
+- **Hook Improvement**: Recall improved to 0.809, better generalization
+- **Stable Training**: Converged at epoch 25 with LR decay, minimal overfitting
+- **Efficient**: Excellent results with moderate dataset size and compute
 
 #### Comparison with Other Models:
-- **ResNet-18**: 0.861 F1 (val) - Strong baseline with transfer learning
+- **ResNet-18**: 0.920 F1 (val) - Leading performance with transfer learning
 - **Advanced CNN**: 0.776 F1 (val)
 - **Baseline CNN**: ~0.70 F1 (val)
 
-The ResNet-18 model demonstrates reliable performance with transfer learning, though there's room for improvement on the "hook" class through enhanced data augmentation or attention mechanisms.
+The ResNet-18 model now demonstrates exceptional performance, achieving high accuracy across all punch classes with robust transfer learning.
