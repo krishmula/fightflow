@@ -29,9 +29,11 @@ By keeping the heavy lifting in the `base` folder, you are completely free to br
 
 To run the advanced model, you will use the main project CLI script located in your root directory.
 
-**To extract video frames into uniform classes (this is universal and does not require a model flag):**
+All settings are read from `hparams.yaml`; CLI overrides are ignored.
+
+**To extract samples into uniform classes:**
 ```bash
-python main.py --task prepare_data
+python main.py --model cnn_advanced --task prepare_data
 ```
 
 **To train the advanced model:**

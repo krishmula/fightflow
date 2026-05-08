@@ -4,6 +4,8 @@ data:
   video_dir: "data/downloaded-videos"
   processed_frames_dir: "data/processed/frames"
   manifest_file: "data/processed/dataset_manifest_kush.csv"
+  processed_clips_dir: "data/processed/clips"
+  clip_manifest_file: "data/processed/clip_manifest.csv"
 
 # Global Target Classes
 classes: ["straight", "hook", "uppercut", "none"]
@@ -21,6 +23,12 @@ classes: ["straight", "hook", "uppercut", "none"]
 #       to ensure maximum diversity and avoids front-loading frames from a single video.
 preparation:
   uniform_samples_per_class: "auto"
+  # Frames before the annotated peak frame to include in the clip.
+  # Keep in sync with cnn_lstm clip_length (pre + post + 1) and re-run prepare_data if changed.
+  clip_pre_frames: 8
+  # Frames after the annotated peak frame to include in the clip.
+  # Keep in sync with cnn_lstm clip_length (pre + post + 1) and re-run prepare_data if changed.
+  clip_post_frames: 3
 
 # Data Augmentation Configuration
 augmentation:

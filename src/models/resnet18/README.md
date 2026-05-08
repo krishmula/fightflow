@@ -37,6 +37,13 @@ The model uses a two-phase training approach:
 
 Use the main project CLI script for all operations.
 
+All settings are read from `hparams.yaml`; CLI overrides are ignored.
+
+**To extract samples into uniform classes:**
+```bash
+python main.py --model resnet18 --task prepare_data
+```
+
 **To train the ResNet-18 model:**
 ```bash
 python main.py --model resnet18 --task train

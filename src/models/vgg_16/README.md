@@ -14,14 +14,22 @@ VGG expects **224×224** RGB normalized like other ImageNet-backed models (`base
 
 ## Run (project gateway)
 
+All settings are read from `hparams.yaml`; CLI overrides are ignored.
+
+Prepare samples:
+
+```bash
+python main.py --model vgg_16 --task prepare_data
+```
+
 Train:
 
 ```bash
-python main.py --model vgg_16 --task train -- --config src/models/vgg_16/hparams.yaml
+python main.py --model vgg_16 --task train
 ```
 
 Test / validate after replacing `REPLACE_WITH_RUN` in `hparams.yaml` with your run folder name:
 
 ```bash
-python main.py --model vgg_16 --task test -- ...
+python main.py --model vgg_16 --task test
 ```

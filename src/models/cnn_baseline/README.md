@@ -27,9 +27,11 @@ This clean separation means you can safely experiment with the neural network ar
 
 To interact with this model, use the main project CLI script located in your root folder.
 
-**To extract video frames into uniform classes (this is universal and does not require a model flag):**
+All settings are read from `hparams.yaml`; CLI overrides are ignored.
+
+**To extract samples into uniform classes:**
 ```bash
-python main.py --task prepare_data
+python main.py --model cnn_baseline --task prepare_data
 ```
 
 **To train the baseline model:**

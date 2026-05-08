@@ -15,7 +15,7 @@ from src.models.cnn_baseline.api import BaselineCNNAPI
 from src.models.cnn_advanced.api import AdvancedCNNAPI
 from src.models.resnet18.api import ResNet18API
 from src.models.vgg_16.api import VGG16API
-from src.models.base.api import BaseModelAPI
+from src.models.cnn_lstm.api import CNNLSTMAPI
 
 
 def _clean_forwarded_args(raw_args: list[str]) -> list[str]:
@@ -65,9 +65,11 @@ def _get_model_api(model_name: str):
         return ResNet18API()
     if model_name == "vgg_16":
         return VGG16API()
+    if model_name == "cnn_lstm":
+        return CNNLSTMAPI()
     raise SystemExit(
         f"Unknown model '{model_name}'. Available models: "
-        "['cnn_baseline', 'cnn_advanced', 'resnet18', 'vgg_16']"
+        "['cnn_baseline', 'cnn_advanced', 'resnet18', 'vgg_16', 'cnn_lstm']"
     )
 
 
@@ -103,16 +105,12 @@ def main() -> None:
 
     task_name = args.task.strip().replace("-", "_")
     
-    # Special bypass: prepare_data is model-agnostic, run it purely off BaseModelAPI.
-    if task_name == "prepare_data" and not args.model:
-        model_api = BaseModelAPI()
-    else:
-        if not args.model:
-            raise SystemExit(f"Error: You must specify --model when running the '{args.task}' task.")
-            
-        _validate_model_folder(args.model)
-        _ensure_output_folders(args.model)
-        model_api = _get_model_api(args.model)
+    if not args.model:
+        raise SystemExit(f"Error: You must specify --model when running the '{args.task}' task.")
+
+    _validate_model_folder(args.model)
+    _ensure_output_folders(args.model)
+    model_api = _get_model_api(args.model)
         
     if not hasattr(model_api, task_name):
         raise SystemExit(

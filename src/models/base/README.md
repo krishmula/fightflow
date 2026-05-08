@@ -11,7 +11,7 @@ When you look at other folders like `cnn_baseline` or `cnn_advanced`, you will n
 ## What is inside this folder?
 
 1. **`pipeline.py`**: This is the engine. It contains the shared `train`, `test_only`, and `validate_only` functions. It reads your dataset, handles PyTorch DataLoaders, calculates the loss, plots your training history, and saves the best model checkpoints.
-2. **`api.py`**: This file acts as the gateway. It parses command line arguments and includes a `prepare_data` script that extracts physical frames from your raw `.mp4` video files.
+2. **`api.py`**: This file acts as the gateway. It parses command line arguments and includes a `prepare_data` script that either extracts single-frame samples (frame-only CNNs) or clip samples (CNN+LSTM), depending on the selected model.
 3. **`data_config.yaml`**: This is the master configuration file for your dataset. If you want to automatically balance your classes to prevent bias, or if you want to tweak image augmentations like brightness or random flips, you do it here.
 4. **`utils.py`**: Small helper tools, like automatically detecting if you are using a GPU or CPU.
 
@@ -31,12 +31,12 @@ You do not need to write a custom training loop! You just write the math, and th
 
 Because this `base` folder is purely infrastructure, you do not run it directly. Instead, you run the models that rely on it using the main project gateway (`main.py`).
 
-For example, the data preparation script lives in `base`. You can run it universally without specifying a model:
+For example, the data preparation script lives in `base` but now uses the model flag to choose sample type (single-frame vs clip):
 ```bash
-python main.py --task prepare_data
+python main.py --model <model_name> --task prepare_data
 ```
 
-When you want to train a model (which automatically uses the shared training loop located here), you run:
-```bash
-python main.py --model cnn_baseline --task train
-```
+## Data Splits and Leakage
+
+This project uses video-level splitting for training/validation/testing to avoid data leakage. A sample-level split can place clips or frames from the same video into multiple splits, which inflates performance and can look like overfitting because the model learns video-specific cues. Video-level splits keep all samples from a video together, which is safer but can lead to uneven sample counts across splits.
+

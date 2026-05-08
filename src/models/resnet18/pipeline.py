@@ -41,7 +41,8 @@ class ResNet18PunchClassifier(nn.Module):
         super().__init__()
 
         # Load pretrained ResNet-18
-        self.resnet = models.resnet18(pretrained=pretrained)
+        weights = models.ResNet18_Weights.DEFAULT if pretrained else None
+        self.resnet = models.resnet18(weights=weights)
 
         # Replace the final fully connected layer
         # Original: 512 input features → 1000 classes
