@@ -185,10 +185,15 @@ def train(args: argparse.Namespace) -> None:
     )
     df = load_manifest(manifest_path)
 
-    splits = getattr(args, "splits", {"train": 0.70, "val": 0.15, "test": 0.15})
+    splits = getattr(args, "splits", None)
+    if not isinstance(splits, dict):
+        raise ValueError("The 'splits' configuration is missing from the hparams file.")
     train_df, val_df, test_df = split_by_video(df, splits, args.seed)
 
-    train_tf = get_transforms(args.image_size, augment=bool(getattr(args, "augment", True)))
+    augment = getattr(args, "augment", None)
+    if augment is None:
+        raise ValueError("The 'augment' configuration is missing from the hparams file.")
+    train_tf = get_transforms(args.image_size, augment=bool(augment))
     eval_tf = get_transforms(args.image_size, augment=False)
 
     train_ds = ClipDataset(train_df, clip_length=args.clip_length, transform=train_tf)
@@ -229,7 +234,10 @@ def train(args: argparse.Namespace) -> None:
     )
     _maybe_load_checkpoint(backbone.model, cnn_ckpt, args.cnn_backbone, device)
 
-    if getattr(args, "freeze_backbone", True):
+    freeze_backbone = getattr(args, "freeze_backbone", None)
+    if freeze_backbone is None:
+        raise ValueError("The 'freeze_backbone' configuration is missing from the hparams file.")
+    if freeze_backbone:
         for param in backbone.parameters():
             param.requires_grad = False
 
@@ -282,7 +290,7 @@ def train(args: argparse.Namespace) -> None:
         "use_class_weights": bool(args.use_class_weights),
         "cnn_backbone": args.cnn_backbone,
         "cnn_init": args.cnn_init,
-        "freeze_backbone": bool(getattr(args, "freeze_backbone", True)),
+        "freeze_backbone": bool(freeze_backbone),
         "clip_length": args.clip_length,
         "lstm_hidden": args.lstm_hidden,
         "lstm_layers": args.lstm_layers,
@@ -468,7 +476,10 @@ def test_only(args: argparse.Namespace) -> None:
         getattr(args, "manifest_file", "") or data_cfg.get("clip_manifest_file", "data/processed/clip_manifest.csv")
     )
     df = load_manifest(manifest_path)
-    _, _, test_df = split_by_video(df, getattr(args, "splits", {}), args.seed)
+    splits = getattr(args, "splits", None)
+    if not isinstance(splits, dict):
+        raise ValueError("The 'splits' configuration is missing from the hparams file.")
+    _, _, test_df = split_by_video(df, splits, args.seed)
 
     eval_tf = get_transforms(args.image_size, augment=False)
     test_ds = ClipDataset(test_df, clip_length=args.clip_length, transform=eval_tf)
@@ -507,7 +518,10 @@ def validate_only(args: argparse.Namespace) -> None:
         getattr(args, "manifest_file", "") or data_cfg.get("clip_manifest_file", "data/processed/clip_manifest.csv")
     )
     df = load_manifest(manifest_path)
-    _, val_df, _ = split_by_video(df, getattr(args, "splits", {}), args.seed)
+    splits = getattr(args, "splits", None)
+    if not isinstance(splits, dict):
+        raise ValueError("The 'splits' configuration is missing from the hparams file.")
+    _, val_df, _ = split_by_video(df, splits, args.seed)
 
     eval_tf = get_transforms(args.image_size, augment=False)
     val_ds = ClipDataset(val_df, clip_length=args.clip_length, transform=eval_tf)

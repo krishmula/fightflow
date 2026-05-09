@@ -69,3 +69,13 @@ python main.py --model cnn_advanced --task test
 - Best multiclass performance: 0.88 F1 score with 77.8% test accuracy
 - Uppercut detection improved from 0.63 to 0.80 F1 score
 - Hook detection improved from 0.56 to 0.67 F1 score
+
+### Data Leakage Fix (May 8, 2026)
+- **Critical Issue Identified**: Frame-based models were vulnerable to data leakage because frames from the same video could appear in both training and evaluation splits. This inflated metrics and hid overfitting.
+- **Solution Implemented**: Added video-level splitting using Group-aware Stratified Greedy Split (GSGS) algorithm, identical to CNN+LSTM. All frames from a video now stay in one split (train/val/test).
+- **Impact**: Prevents leakage while maintaining class balance and sample diversity. Models now use leakage-safe splits by default.
+
+### Data Preparation Optimization (May 8, 2026)
+- **Performance Issue**: Extraction was slow due to re-opening video files for every frame and random seeking.
+- **Optimization**: Implemented grouped video processing. The script now opens each video once and extracts all required frames sequentially in a single pass.
+- **Impact**: Reduced data preparation time from minutes to seconds, significantly accelerating the development workflow.

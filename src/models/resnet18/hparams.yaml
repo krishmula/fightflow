@@ -10,23 +10,28 @@ common:
   num_workers: 2
   # Hardware to use (auto, cpu, cuda, mps)
   device: auto
+  # Random seed for reproducibility
+  seed: 42
+  # Number of frames to extract from each video (1 = middle frame)
+  # This is used if annotations.csv is read directly instead of using a manifest.
+  frames_per_video: 1
+  # Data splitting configuration
+  splits:
+    train: 0.80
+    val: 0.20
+    test: 0.00
 
 train:
   # Comma-separated list of classes. 'not_jab' automatically groups negative classes.
   class_names: straight,hook,uppercut,none
   # Total number of training loops over the entire dataset
   epochs: 30
-  # Smaller learning rate for fine-tuning pretrained model
-  lr: 0.0001
-  # Weight decay (L2 penalty) for the optimizer
-  weight_decay: 0.00001
-  splits:
-    # Fraction of data to use for training
-    train: 0.70
-    # Fraction of training data to use for validation
-    val: 0.15
-    # Fraction of test data to hold out
-    test: 0.15
+  # Number of initial epochs with frozen backbone (only train classifier/attention)
+  freeze_epochs: 5
+  # Smaller learning rate for fine-tuning pretrained model (refined for stability)
+  lr: 0.00005
+  # Weight decay (L2 penalty) for the optimizer (increased for better regularization)
+  weight_decay: 0.0001
   # Epochs to wait for val_macro_f1 to improve before early stopping
   patience: 10
   # Epochs to wait before reducing the learning rate

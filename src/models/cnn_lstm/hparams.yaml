@@ -13,6 +13,11 @@ common:
   device: auto
   # Random seed for reproducibility
   seed: 42
+  # Data splitting configuration
+  splits:
+    train: 0.80
+    val: 0.10
+    test: 0.10
   # Fixed number of frames per clip fed to the LSTM (clips are subsampled/padded to this length).
   # If you change this, consider updating clip_pre_frames/clip_post_frames in base/data_config.yaml and re-running prepare_data.
   clip_length: 12
@@ -33,9 +38,9 @@ common:
   # LSTM dropout between layers (ignored if lstm_layers = 1)
   lstm_dropout: 0.0
   # Use a bidirectional LSTM
-  lstm_bidirectional: false
+  lstm_bidirectional: true
   # LSTM pooling strategy: last or mean
-  lstm_output: last
+  lstm_output: mean
   # Optional projection dim before LSTM (0/empty = no projection)
   feature_dim: 512
   # Enable training-time augmentation from base/data_config.yaml
@@ -45,18 +50,11 @@ train:
   # Comma-separated list of classes
   class_names: straight,hook,uppercut,none
   # Total number of training loops over the entire dataset
-  epochs: 15
+  epochs: 25
   # Learning rate for the AdamW optimizer
   lr: 0.0001
   # Weight decay (L2 penalty) for the optimizer
   weight_decay: 0.0001
-  splits:
-    # Fraction of data to use for training
-    train: 0.90
-    # Fraction of training data to use for validation
-    val: 0.10
-    # Fraction of test data to hold out
-    test: 0.0
   # Epochs to wait for val_macro_f1 to improve before early stopping
   patience: 6
   # Epochs to wait before reducing the learning rate

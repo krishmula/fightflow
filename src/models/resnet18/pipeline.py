@@ -13,8 +13,8 @@ from ..base.pipeline import test_only as base_test_only
 from ..base.pipeline import validate_only as base_validate_only
 
 
-class SpatialAttention(nn.Module):
-    """Spatial Attention Module for focusing on motion-relevant regions."""
+class ChannelAttention(nn.Module):
+    """Channel Attention Module (SE-style) for focusing on motion-relevant features."""
     
     def __init__(self, in_channels: int, reduction_ratio: int = 16):
         super().__init__()
@@ -44,18 +44,17 @@ class ResNet18PunchClassifier(nn.Module):
         weights = models.ResNet18_Weights.DEFAULT if pretrained else None
         self.resnet = models.resnet18(weights=weights)
 
-        # Replace the final fully connected layer
-        # Original: 512 input features → 1000 classes
-        # New: 512 input features → num_classes
+        # ResNet18 final layer features
         num_features = self.resnet.fc.in_features
         
-        # Add spatial attention before classifier if enabled
+        # Add channel attention before the global average pool
         self.use_attention = use_attention
         if self.use_attention:
-            self.attention = SpatialAttention(num_features)
+            self.attention = ChannelAttention(num_features)
         
+        # Replace the final fully connected layer
         self.resnet.fc = nn.Sequential(
-            nn.Dropout(p=0.5),  # Add dropout for regularization
+            nn.Dropout(p=0.5),
             nn.Linear(num_features, num_classes)
         )
 
@@ -71,18 +70,12 @@ class ResNet18PunchClassifier(nn.Module):
         x = self.resnet.layer3(x)
         x = self.resnet.layer4(x)
         
+        # Apply attention while still in 4D (before global average pooling)
+        if self.use_attention:
+            x = self.attention(x)
+        
         x = self.resnet.avgpool(x)
         x = torch.flatten(x, 1)
-        
-        # Apply spatial attention if enabled
-        if self.use_attention:
-            # Reshape for attention (add spatial dimensions)
-            b, c = x.shape
-            h, w = int(c**0.5), int(c**0.5)
-            if h * w == c:  # Only apply if we can reshape to spatial
-                x_spatial = x.view(b, c, 1, 1)
-                x_spatial = self.attention(x_spatial)
-                x = x_spatial.view(b, c)
         
         # Final classification
         x = self.resnet.fc(x)

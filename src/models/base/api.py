@@ -1,4 +1,5 @@
 import os
+import random
 import shutil
 import cv2
 import pandas as pd
@@ -6,7 +7,6 @@ from pathlib import Path
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Callable
 import yaml
-from sklearn.model_selection import train_test_split
 import argparse
 
 from .utils import resolve_project_path, save_json
@@ -35,11 +35,14 @@ class BaseModelAPI(ABC):
         - Frame-only CNNs: extract single frames
         - CNN+LSTM: extract short clips around annotated frames
         """
+        if isinstance(args, list):
+            args = self._parse_args(args, mode="prepare_data", default_config=getattr(self, "default_config", None))
+
         model_name = getattr(self, "name", None)
         if model_name == "cnn_lstm":
             self._prepare_clips()
         else:
-            self._prepare_frames()
+            self._prepare_frames(args)
 
     @staticmethod
     def _clean_args(raw_args: list[str]) -> list[str]:
@@ -112,16 +115,9 @@ class BaseModelAPI(ABC):
             config_dict = self._select_mode_config(payload, mode)
         return argparse.Namespace(**config_dict)
 
-    def _invoke(self, mode: str, raw_args: list[str], runner: Callable, default_config: Path = None, defaults: dict = None) -> int:
+    def _invoke(self, mode: str, raw_args: list[str], runner: Callable, default_config: Path = None) -> int:
         parsed_args = self._parse_args(raw_args, mode, default_config)
-        config_dict = vars(parsed_args)
-
-        if defaults:
-            for k, v in defaults.items():
-                if k not in config_dict:
-                    config_dict[k] = v
-
-        runner(argparse.Namespace(**config_dict))
+        runner(parsed_args)
         return 0
 
     def _clear_dir(self, path: Path) -> None:
@@ -173,7 +169,7 @@ class BaseModelAPI(ABC):
             return pd.concat(sampled_dfs, ignore_index=True)
         return df
 
-    def _prepare_frames(self) -> None:
+    def _prepare_frames(self, args: argparse.Namespace | None = None) -> None:
         annotations_file = resolve_project_path(self.config["data"]["annotations_file"])
         video_dir = resolve_project_path(self.config["data"]["video_dir"])
         frames_dir = resolve_project_path(self.config["data"]["processed_frames_dir"])
@@ -182,90 +178,129 @@ class BaseModelAPI(ABC):
         frames_dir.mkdir(parents=True, exist_ok=True)
         existing = list(frames_dir.glob("*.jpg")) + list(frames_dir.glob("*.jpeg"))
         if existing:
-            print(f"Clearing {len(existing)} existing frames from {frames_dir} ...")
-            for f in existing:
+            total_ext = len(existing)
+            print(f"Clearing {total_ext} existing frames from {frames_dir}...")
+            for i, f in enumerate(existing):
                 f.unlink()
+                if (i + 1) % 100 == 0 or (i + 1) == total_ext:
+                    print(f"\r  Deleted: {i + 1}/{total_ext}", end="", flush=True)
+            print()
 
         df = pd.read_csv(annotations_file)
         class_names = self.config["classes"]
         class_to_idx = {name: idx for idx, name in enumerate(class_names)}
+        print(f"Balancing dataset classes...")
         df = self._sample_annotations(df, class_names)
+        
+        split_ratios = getattr(args, "splits", None)
+        if not isinstance(split_ratios, dict):
+            raise ValueError("The 'splits' configuration is missing from the hparams file.")
+        
+        seed = getattr(args, "seed", None)
+        if seed is None:
+            raise ValueError("The 'seed' configuration is missing from the hparams file.")
+        
+        print(f"Applying Group-aware Stratified Greedy Split (GSGS) for leakage-safe preparation...")
+        df = self._assign_splits_by_video(df, class_to_idx, split_ratios, seed)
 
         total_rows = len(df)
         samples = []
         skipped = 0
         skipped_rows = []
 
-        print(f"Starting data preparation: {total_rows} annotations to process...")
+        print(f"\nStarting extraction: {total_rows} frames to process...")
 
-        for i, (_, row) in enumerate(df.iterrows()):
-            video_id = str(row["video_id"])
-            punch_type = str(row["punch_type"])
-            frame_index = int(row["frame_index"])
-
-            print(
-                f"\r  Progress: {i + 1}/{total_rows} | Extracted: {len(samples)} | Skipped: {skipped}",
-                end="",
-                flush=True,
-            )
-
+        processed_count = 0
+        for video_id, video_df in df.groupby("video_id", sort=False):
             video_path = video_dir / video_id
+            
             if not video_path.exists():
-                skipped_rows.append(
-                    {
+                for _, row in video_df.iterrows():
+                    processed_count += 1
+                    skipped_rows.append({
                         "video_id": video_id,
-                        "frame_index": frame_index,
-                        "punch_type": punch_type,
+                        "frame_index": int(row["frame_index"]),
+                        "punch_type": str(row["punch_type"]),
                         "reason": "missing_video",
-                    }
-                )
-                skipped += 1
+                    })
+                    skipped += 1
                 continue
 
             cap = cv2.VideoCapture(str(video_path))
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
-            ret, frame = cap.read()
-            cap.release()
+            if not cap.isOpened():
+                for _, row in video_df.iterrows():
+                    processed_count += 1
+                    skipped_rows.append({
+                        "video_id": video_id,
+                        "frame_index": int(row["frame_index"]),
+                        "punch_type": str(row["punch_type"]),
+                        "reason": "video_open_failed",
+                    })
+                    skipped += 1
+                continue
 
-            if not ret:
-                skipped_rows.append(
-                    {
+            # Sort by frame_index for better seek performance
+            current_frame = -1
+            for _, row in video_df.sort_values("frame_index").iterrows():
+                processed_count += 1
+                frame_index = int(row["frame_index"])
+                punch_type = str(row["punch_type"])
+
+                print(
+                    f"\r  Progress: {processed_count}/{total_rows} | Extracted: {len(samples)} | Skipped: {skipped}",
+                    end="",
+                    flush=True,
+                )
+
+                # Performance Optimization: If the next frame is close, read sequentially instead of seeking
+                diff = frame_index - current_frame
+                if current_frame != -1 and 0 < diff < 100:
+                    # Sequential read is often MUCH faster than seeking in many codecs
+                    for _ in range(diff - 1):
+                        cap.grab() # grab() skips decoding, making it faster
+                    ret, frame = cap.read()
+                else:
+                    # Standard seek for large jumps
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+                    ret, frame = cap.read()
+                
+                current_frame = frame_index
+
+                if not ret:
+                    skipped_rows.append({
                         "video_id": video_id,
                         "frame_index": frame_index,
                         "punch_type": punch_type,
                         "reason": "frame_decode_failed",
-                    }
-                )
-                skipped += 1
-                continue
+                    })
+                    skipped += 1
+                    continue
 
-            label_idx = class_to_idx.get(punch_type, -1)
-            if label_idx == -1:
-                skipped_rows.append(
-                    {
+                label_idx = class_to_idx.get(punch_type, -1)
+                if label_idx == -1:
+                    skipped_rows.append({
                         "video_id": video_id,
                         "frame_index": frame_index,
                         "punch_type": punch_type,
                         "reason": "unknown_label",
-                    }
-                )
-                skipped += 1
-                continue
+                    })
+                    skipped += 1
+                    continue
 
-            video_stem = Path(video_id).stem
-            frame_filename = f"{punch_type}_{video_stem}_{frame_index:06d}.jpg"
-            frame_path = frames_dir / frame_filename
-            cv2.imwrite(str(frame_path), frame)
+                video_stem = Path(video_id).stem
+                frame_filename = f"{punch_type}_{video_stem}_{frame_index:06d}.jpg"
+                frame_path = frames_dir / frame_filename
+                cv2.imwrite(str(frame_path), frame)
 
-            samples.append(
-                {
+                samples.append({
                     "image_path": str(frame_path),
                     "label": label_idx,
                     "video_id": video_id,
                     "frame_index": frame_index,
                     "punch_type": punch_type,
-                }
-            )
+                    "split": row.get("split", "train"),
+                })
+            cap.release()
 
         print()
 
@@ -276,12 +311,137 @@ class BaseModelAPI(ABC):
             skips_file = manifest_file.with_name("prepare_skips_frames.csv")
             pd.DataFrame(skipped_rows).to_csv(skips_file, index=False)
 
-        print(
-            f"Done! Extracted {len(samples)} samples  |  Skipped {skipped}  |  Saved to {frames_dir}"
-        )
-        print(f"Manifest: {manifest_file}")
+        print(f"Data preparation complete!")
+        print(f"  - Extracted frames: {len(samples)}")
+        print(f"  - Skipped rows:     {skipped}")
+        print(f"  - Frames directory: {frames_dir}")
+        print(f"  - Manifest file:    {manifest_file}")
         if skipped_rows:
-            print(f"Skipped rows: {skips_file}")
+            print(f"  - Skips log:        {skips_file}")
+
+    def _assign_splits_by_video(
+        self,
+        df: pd.DataFrame,
+        class_to_idx: dict[str, int],
+        splits: dict,
+        seed: int,
+    ) -> pd.DataFrame:
+        if df.empty:
+            return df
+
+        working = df.copy()
+        working["label"] = (
+            working["punch_type"]
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            .map(class_to_idx)
+            .fillna(-1)
+            .astype(int)
+        )
+        working = working[working["label"] >= 0]
+        if working.empty:
+            df["split"] = "train"
+            return df
+
+        train_ratio = float(splits.get("train", 0.7))
+        val_ratio = float(splits.get("val", 0.15))
+        test_ratio = float(splits.get("test", 0.15))
+        total_ratio = train_ratio + val_ratio + test_ratio
+        if total_ratio <= 0:
+            df["split"] = "train"
+            return df
+
+        split_ratios = {
+            "train": train_ratio / total_ratio,
+            "val": val_ratio / total_ratio,
+            "test": test_ratio / total_ratio,
+        }
+        split_ratios = {k: v for k, v in split_ratios.items() if v > 0}
+
+        video_ids = sorted(working["video_id"].astype(str).unique().tolist())
+        if len(video_ids) < 2:
+            df["split"] = "train"
+            return df
+
+        labels = sorted(working["label"].unique().tolist())
+        video_label_counts = (
+            working.groupby(["video_id", "label"]).size().unstack(fill_value=0).reindex(video_ids, fill_value=0)
+        )
+        video_totals = video_label_counts.sum(axis=1)
+
+        total_samples = float(video_totals.sum())
+        targets_total = {k: total_samples * v for k, v in split_ratios.items()}
+        label_totals = working["label"].value_counts().to_dict()
+        targets_labels = {
+            label: {k: float(label_totals.get(label, 0)) * split_ratios[k] for k in split_ratios}
+            for label in labels
+        }
+
+        rng = random.Random(seed)
+        assignments = {k: [] for k in split_ratios}
+        current_total = {k: 0.0 for k in split_ratios}
+        current_labels = {label: {k: 0.0 for k in split_ratios} for label in labels}
+
+        shuffled = video_ids[:]
+        rng.shuffle(shuffled)
+        shuffled.sort(key=lambda vid: (video_totals.loc[vid], str(vid)), reverse=True)
+
+        def cost(split_name: str, vid_counts: dict, vid_total: float) -> float:
+            target_total = targets_total.get(split_name, 0.0)
+            if target_total <= 0:
+                return float("inf")
+
+            total_after = current_total[split_name] + vid_total
+            total_penalty = ((total_after - target_total) / target_total) ** 2
+
+            label_penalty = 0.0
+            label_count = 0
+            for label in labels:
+                target_label = targets_labels[label].get(split_name, 0.0)
+                if target_label <= 0:
+                    continue
+                label_count += 1
+                label_after = current_labels[label][split_name] + float(vid_counts.get(label, 0))
+                label_penalty += ((label_after - target_label) / target_label) ** 2
+
+            if label_count:
+                label_penalty /= label_count
+            return total_penalty + label_penalty
+
+        def fill_ratio(split_name: str) -> float:
+            target_total = targets_total.get(split_name, 0.0)
+            if target_total <= 0:
+                return float("inf")
+            return current_total[split_name] / target_total
+
+        for vid in shuffled:
+            vid_counts = video_label_counts.loc[vid].to_dict()
+            vid_total = float(video_totals.loc[vid])
+            candidates = list(split_ratios.keys())
+            best_split = min(
+                candidates,
+                key=lambda s: (cost(s, vid_counts, vid_total), fill_ratio(s), current_total[s]),
+            )
+            assignments[best_split].append(vid)
+            current_total[best_split] += vid_total
+            for label in labels:
+                current_labels[label][best_split] += float(vid_counts.get(label, 0))
+
+        video_to_split = {
+            vid: split for split, vids in assignments.items() for vid in vids
+        }
+        
+        print(f"Leakage-safe split assignment complete (seed={seed}):")
+        for split in ["train", "val", "test"]:
+            if split in assignments:
+                vids = assignments[split]
+                count = int(current_total[split])
+                print(f"  {split:5}: {count:5} samples from {len(vids):3} videos")
+
+        df = df.copy()
+        df["split"] = df["video_id"].map(video_to_split).fillna("train")
+        return df
 
     def _prepare_clips(self) -> None:
         data_cfg = self.config.get("data", {})
@@ -299,120 +459,135 @@ class BaseModelAPI(ABC):
         df = pd.read_csv(annotations_file)
         class_names = self.config["classes"]
         class_to_idx = {name: idx for idx, name in enumerate(class_names)}
+        print(f"Balancing dataset classes...")
         df = self._sample_annotations(df, class_names)
+        
+        # Add a dummy args object for compatibility with _assign_splits_by_video if needed
+        # but cnn_lstm doesn't actually use the split column from the manifest yet.
+        # However, for consistency, we could add it.
+        
+        total_rows = len(df)
+        samples = []
+        skipped = 0
+        skipped_rows = []
+
+        print(f"Starting clip extraction: {total_rows} annotations to process...")
 
         prep_cfg = self.config.get("preparation", {})
         pre_frames = int(prep_cfg.get("clip_pre_frames", 10))
         post_frames = int(prep_cfg.get("clip_post_frames", 5))
         clip_len = pre_frames + post_frames + 1
 
-        total_rows = len(df)
-        samples = []
-        skipped = 0
-        skipped_rows = []
-
-        print(f"Starting clip preparation: {total_rows} annotations to process...")
-
-        for i, (_, row) in enumerate(df.iterrows()):
-            video_id = str(row["video_id"])
-            punch_type = str(row["punch_type"])
-            frame_index = int(row["frame_index"])
-
-            print(
-                f"\r  Progress: {i + 1}/{total_rows} | Extracted: {len(samples)} | Skipped: {skipped}",
-                end="",
-                flush=True,
-            )
-
+        processed_count = 0
+        for video_id, video_df in df.groupby("video_id", sort=False):
             video_path = video_dir / video_id
+            
             if not video_path.exists():
-                skipped_rows.append(
-                    {
+                for _, row in video_df.iterrows():
+                    processed_count += 1
+                    skipped_rows.append({
                         "video_id": video_id,
-                        "frame_index": frame_index,
-                        "punch_type": punch_type,
+                        "frame_index": int(row["frame_index"]),
+                        "punch_type": str(row["punch_type"]),
                         "reason": "missing_video",
-                    }
-                )
-                skipped += 1
-                continue
-
-            label_idx = class_to_idx.get(punch_type, -1)
-            if label_idx == -1:
-                skipped_rows.append(
-                    {
-                        "video_id": video_id,
-                        "frame_index": frame_index,
-                        "punch_type": punch_type,
-                        "reason": "unknown_label",
-                    }
-                )
-                skipped += 1
+                    })
+                    skipped += 1
                 continue
 
             cap = cv2.VideoCapture(str(video_path))
             if not cap.isOpened():
-                skipped_rows.append(
-                    {
+                for _, row in video_df.iterrows():
+                    processed_count += 1
+                    skipped_rows.append({
                         "video_id": video_id,
-                        "frame_index": frame_index,
-                        "punch_type": punch_type,
+                        "frame_index": int(row["frame_index"]),
+                        "punch_type": str(row["punch_type"]),
                         "reason": "video_open_failed",
-                    }
-                )
-                skipped += 1
+                    })
+                    skipped += 1
                 continue
 
             frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             if frame_count <= 0:
-                skipped_rows.append(
-                    {
+                for _, row in video_df.iterrows():
+                    processed_count += 1
+                    skipped_rows.append({
                         "video_id": video_id,
-                        "frame_index": frame_index,
-                        "punch_type": punch_type,
+                        "frame_index": int(row["frame_index"]),
+                        "punch_type": str(row["punch_type"]),
                         "reason": "empty_video",
-                    }
-                )
+                    })
+                    skipped += 1
                 cap.release()
-                skipped += 1
                 continue
 
-            video_stem = Path(video_id).stem
-            clip_id = f"{punch_type}_{video_stem}_{frame_index:06d}_r{i + 1:06d}"
-            clip_path = clips_dir / clip_id
-            clip_path.mkdir(parents=True, exist_ok=True)
+            # Sort by frame_index for better seek performance
+            for _, row in video_df.sort_values("frame_index").iterrows():
+                processed_count += 1
+                frame_index = int(row["frame_index"])
+                punch_type = str(row["punch_type"])
 
-            indices = [frame_index - pre_frames + offset for offset in range(clip_len)]
-            success = True
-            for j, idx in enumerate(indices):
-                safe_idx = max(0, min(frame_count - 1, idx))
-                cap.set(cv2.CAP_PROP_POS_FRAMES, safe_idx)
-                ok, frame = cap.read()
-                if not ok or frame is None:
-                    success = False
-                    break
-                frame_path = clip_path / f"frame_{j:04d}.jpg"
-                if not cv2.imwrite(str(frame_path), frame):
-                    success = False
-                    break
+                print(
+                    f"\r  Progress: {processed_count}/{total_rows} | Extracted: {len(samples)} | Skipped: {skipped}",
+                    end="",
+                    flush=True,
+                )
 
-            cap.release()
-
-            if not success:
-                skipped_rows.append(
-                    {
+                label_idx = class_to_idx.get(punch_type, -1)
+                if label_idx == -1:
+                    skipped_rows.append({
                         "video_id": video_id,
                         "frame_index": frame_index,
                         "punch_type": punch_type,
-                        "reason": "clip_write_failed",
-                    }
-                )
-                shutil.rmtree(clip_path, ignore_errors=True)
-                skipped += 1
-                continue
+                        "reason": "unknown_label",
+                    })
+                    skipped += 1
+                    continue
 
-            samples.append(
-                {
+                video_stem = Path(video_id).stem
+                # Use processed_count for unique clip_id if needed, or row index
+                clip_id = f"{punch_type}_{video_stem}_{frame_index:06d}_v{processed_count:06d}"
+                clip_path = clips_dir / clip_id
+                clip_path.mkdir(parents=True, exist_ok=True)
+
+                indices = [frame_index - pre_frames + offset for offset in range(clip_len)]
+                success = True
+                
+                # Performance Optimization: Maintain current frame position to avoid redundant seeks
+                current_cap_frame = -1
+                for j, idx in enumerate(indices):
+                    safe_idx = max(0, min(frame_count - 1, idx))
+                    
+                    if current_cap_frame != -1 and safe_idx == current_cap_frame + 1:
+                        # Direct read is MUCH faster than seeking
+                        ok, frame = cap.read()
+                    else:
+                        # Seek only when necessary
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, safe_idx)
+                        ok, frame = cap.read()
+                    
+                    current_cap_frame = safe_idx
+                    
+                    if not ok or frame is None:
+                        success = False
+                        break
+                    frame_path = clip_path / f"frame_{j:04d}.jpg"
+                    if not cv2.imwrite(str(frame_path), frame):
+                        success = False
+                        break
+
+                if not success:
+                    skipped_rows.append({
+                        "video_id": video_id,
+                        "frame_index": frame_index,
+                        "punch_type": punch_type,
+                        "reason": "clip_extraction_failed",
+                    })
+                    shutil.rmtree(clip_path, ignore_errors=True)
+                    skipped += 1
+                    continue
+
+                samples.append({
                     "clip_dir": str(clip_path),
                     "label": label_idx,
                     "video_id": video_id,
@@ -421,8 +596,8 @@ class BaseModelAPI(ABC):
                     "clip_end": frame_index + post_frames,
                     "clip_length": clip_len,
                     "punch_type": punch_type,
-                }
-            )
+                })
+            cap.release()
 
         print()
 
@@ -433,9 +608,10 @@ class BaseModelAPI(ABC):
             skips_file = manifest_file.with_name("prepare_skips_clips.csv")
             pd.DataFrame(skipped_rows).to_csv(skips_file, index=False)
 
-        print(
-            f"Done! Extracted {len(samples)} samples  |  Skipped {skipped}  |  Saved to {clips_dir}"
-        )
-        print(f"Manifest: {manifest_file}")
+        print(f"Data preparation complete!")
+        print(f"  - Extracted clips:  {len(samples)}")
+        print(f"  - Skipped rows:     {skipped}")
+        print(f"  - Clips directory:  {clips_dir}")
+        print(f"  - Manifest file:    {manifest_file}")
         if skipped_rows:
-            print(f"Skipped rows: {skips_file}")
+            print(f"  - Skips log:        {skips_file}")

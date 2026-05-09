@@ -47,7 +47,7 @@ class EpochMetrics:
 
 
 class FrameDataset(Dataset):
-    def __init__(self, samples: list[tuple[Path, int, int | None]], transform=None):
+    def __init__(self, samples: list[tuple[Path, int, int | None, str]], transform=None):
         self.samples = samples
         self.transform = transform
 
@@ -55,7 +55,7 @@ class FrameDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, index: int):
-        sample_path, label, frame_idx = self.samples[index]
+        sample_path, label, frame_idx, _video_id = self.samples[index]
         suffix = sample_path.suffix.lower()
 
         if suffix in SUPPORTED_IMAGE_EXTS:
@@ -199,7 +199,7 @@ def get_transforms(image_size: int):
     return train_tf, eval_tf
 
 
-def collect_samples(class_names: list[str], frames_per_video: int = 1) -> list[tuple[Path, int, int | None]]:
+def collect_samples(class_names: list[str], frames_per_video: int = 1) -> list[tuple[Path, int, int | None, str]]:
     import pandas as pd
     
     config = get_data_config()
@@ -208,10 +208,29 @@ def collect_samples(class_names: list[str], frames_per_video: int = 1) -> list[t
     video_dir = resolve_project_path(config.get("data", {}).get("video_dir", "data/downloaded-videos"))
     uniform_samples_per_class = config.get("preparation", {}).get("uniform_samples_per_class")
     
+    # Try to load from manifest first if it exists
+    manifest_path = resolve_project_path(config.get("data", {}).get("manifest_file"))
+    if manifest_path and manifest_path.exists():
+        print(f"Loading samples from manifest: {manifest_path}")
+        manifest_df = pd.read_csv(manifest_path)
+        samples = []
+        for _, row in manifest_df.iterrows():
+            # Tuple format: (Path, label_idx, video_id, split_or_punch_type)
+            # split_by_video uses index 2 for video_id now (fixed)
+            samples.append((
+                resolve_project_path(row["image_path"]),
+                int(row["label"]),
+                str(row["video_id"]),
+                row.get("split", "train")
+            ))
+        return samples
+
     if not csv_path.exists():
         raise FileNotFoundError(f"Annotations CSV not found at {csv_path}")
 
     df = pd.read_csv(csv_path)
+    
+    class_to_idx = {name: i for i, name in enumerate(class_names)}
     
     if uniform_samples_per_class == "auto":
         class_counts = df['punch_type'].astype(str).str.strip().str.lower().value_counts()
@@ -245,66 +264,163 @@ def collect_samples(class_names: list[str], frames_per_video: int = 1) -> list[t
         if sampled_dfs:
             df = pd.concat(sampled_dfs, ignore_index=True)
     
-    samples: list[tuple[Path, int, int | None]] = []
+    samples: list[tuple[Path, int, int | None, str]] = []
     
     for _, row in df.iterrows():
+        video_id = row['video_id']
+        frame_index = int(row['frame_index'])
         punch_type = str(row['punch_type']).strip().lower()
+        
+        label_idx = class_to_idx.get(punch_type, -1)
+        if label_idx == -1:
+            continue
             
-        class_idx = -1
-        for i, cname in enumerate(class_names):
-            if cname.strip().lower() == punch_type:
-                class_idx = i
-                break
-                
-        if class_idx != -1:
-            video_id = str(row['video_id'])
-            video_path = video_dir / f"{video_id}.mp4"
-            if video_path.exists():
-                samples.append((video_path, class_idx, int(row['frame_index'])))
-            else:
-                # Fallback to no extension
-                video_path_no_ext = video_dir / video_id
-                if video_path_no_ext.exists():
-                    samples.append((video_path_no_ext, class_idx, int(row['frame_index'])))
-
+        # Construct frame path
+        video_stem = Path(video_id).stem
+        frame_id = f"{punch_type}_{video_stem}_{frame_index:06d}"
+        frames_dir = resolve_project_path(config.get("data", {}).get("processed_frames_dir", "data/processed/frames"))
+        frame_path = frames_dir / f"{frame_id}.jpg"
+        
+        samples.append((frame_path, label_idx, video_id, punch_type))
+    
     return samples
 
-def split_train_val_samples(
-    train_samples: list[tuple[Path, int, int | None]], val_ratio: float, seed: int
-) -> tuple[list[tuple[Path, int, int | None]], list[tuple[Path, int, int | None]]]:
-    if val_ratio <= 0 or len(train_samples) < 2:
-        return train_samples, []
 
-    labels = [label for _, label, _ in train_samples]
-    sample_indices = np.arange(len(train_samples))
+def split_by_video(
+    samples: list[tuple[Path, int, int | None, str]], splits: dict, seed: int
+) -> tuple[list[tuple[Path, int, int | None, str]], list[tuple[Path, int, int | None, str]], list[tuple[Path, int, int | None, str]]]:
+    """
+    Groups samples by video_id and assigns them to splits using a Group-aware Stratified Greedy Split (GSGS).
+    This ensures that all frames from a single video stay in the same split (leakage-safe).
+    """
+    # Check if samples already have split assignments (from manifest)
+    # Tuple format: (Path, label, video_id, split_or_punch_type)
+    train_samples = [s for s in samples if s[3] == "train"]
+    val_samples = [s for s in samples if s[3] == "val"]
+    test_samples = [s for s in samples if s[3] == "test"]
+    
+    if train_samples or val_samples or test_samples:
+        print(f"Using pre-assigned splits from manifest: train={len(train_samples)}, val={len(val_samples)}, test={len(test_samples)}")
+        return train_samples, val_samples, test_samples
 
-    try:
-        train_idx, val_idx = train_test_split(
-            sample_indices,
-            test_size=val_ratio,
-            random_state=seed,
-            stratify=labels,
+    # Group samples by video_id
+    video_to_samples = {}
+    for s in samples:
+        vid = s[2] # Use index 2 which is video_id
+        if vid not in video_to_samples:
+            video_to_samples[vid] = []
+        video_to_samples[vid].append(s)
+
+    video_ids = sorted(video_to_samples.keys())
+    if len(video_ids) < 2:
+        return samples, [], []
+
+    total_ratio = train_ratio + val_ratio + test_ratio
+    if total_ratio <= 0:
+        return samples, [], []
+
+    split_ratios = {
+        "train": train_ratio / total_ratio,
+        "val": val_ratio / total_ratio,
+        "test": test_ratio / total_ratio,
+    }
+    split_ratios = {k: v for k, v in split_ratios.items() if v > 0}
+
+    # Count labels per video
+    labels = sorted(list(set(s[1] for s in samples)))
+    video_label_counts = {vid: {label: 0 for label in labels} for vid in video_ids}
+    video_totals = {vid: 0 for vid in video_ids}
+    
+    for vid, v_samples in video_to_samples.items():
+        for s in v_samples:
+            label = s[1]
+            video_label_counts[vid][label] += 1
+            video_totals[vid] += 1
+
+    total_samples = float(len(samples))
+    targets_total = {k: total_samples * v for k, v in split_ratios.items()}
+    
+    label_totals = {label: 0 for label in labels}
+    for s in samples:
+        label = s[1]
+        label_totals[label] += 1
+        
+    targets_labels = {
+        label: {k: float(label_totals.get(label, 0)) * split_ratios[k] for k in split_ratios}
+        for label in labels
+    }
+
+    rng = random.Random(seed)
+    assignments = {k: [] for k in split_ratios}
+    current_total = {k: 0.0 for k in split_ratios}
+    current_labels = {label: {k: 0.0 for k in split_ratios} for label in labels}
+
+    shuffled = video_ids[:]
+    rng.shuffle(shuffled)
+    # Sort by size descending for greedy bin packing
+    shuffled.sort(key=lambda vid: (video_totals[vid], str(vid)), reverse=True)
+
+    def cost(split_name: str, vid_counts: dict, vid_total: float) -> float:
+        target_total = targets_total.get(split_name, 0.0)
+        if target_total <= 0:
+            return float("inf")
+
+        total_after = current_total[split_name] + vid_total
+        total_penalty = ((total_after - target_total) / target_total) ** 2
+
+        label_penalty = 0.0
+        label_count = 0
+        for label in labels:
+            target_label = targets_labels[label].get(split_name, 0.0)
+            if target_label <= 0:
+                continue
+            label_count += 1
+            label_after = current_labels[label][split_name] + float(vid_counts.get(label, 0))
+            label_penalty += ((label_after - target_label) / target_label) ** 2
+
+        if label_count:
+            label_penalty /= label_count
+        return total_penalty + label_penalty
+
+    def fill_ratio(split_name: str) -> float:
+        target_total = targets_total.get(split_name, 0.0)
+        if target_total <= 0:
+            return float("inf")
+        return current_total[split_name] / target_total
+
+    for vid in shuffled:
+        vid_counts = video_label_counts[vid]
+        vid_total = float(video_totals[vid])
+        candidates = list(split_ratios.keys())
+        best_split = min(
+            candidates,
+            key=lambda s: (cost(s, vid_counts, vid_total), fill_ratio(s), current_total[s]),
         )
-    except ValueError:
-        train_idx, val_idx = train_test_split(
-            sample_indices,
-            test_size=val_ratio,
-            random_state=seed,
-            stratify=None,
-        )
+        assignments[best_split].append(vid)
+        current_total[best_split] += vid_total
+        for label in labels:
+            current_labels[label][best_split] += float(vid_counts.get(label, 0))
 
-    split_train = [train_samples[i] for i in train_idx]
-    split_val = [train_samples[i] for i in val_idx]
-    return split_train, split_val
+    def get_samples_for_vids(vids):
+        res = []
+        for vid in vids:
+            res.extend(video_to_samples[vid])
+        return res
+
+    train_samples = get_samples_for_vids(assignments.get("train", []))
+    val_samples = get_samples_for_vids(assignments.get("val", []))
+    test_samples = get_samples_for_vids(assignments.get("test", []))
+    
+    return train_samples, val_samples, test_samples
 
 
 def compute_class_weights(
-    samples: list[tuple[Path, int, int | None]], num_classes: int, device: torch.device
+    samples: list[tuple], num_classes: int, device: torch.device
 ) -> torch.Tensor | None:
     if not samples:
         return None
 
-    labels = np.array([label for _, label, _ in samples], dtype=np.int64)
+    labels = np.array([s[1] for s in samples], dtype=np.int64)
     counts = np.bincount(labels, minlength=num_classes).astype(np.float32)
     weights = np.zeros_like(counts)
     non_zero = counts > 0
@@ -544,7 +660,9 @@ def train(args: argparse.Namespace, model_class: type[nn.Module]) -> None:
     device = resolve_device(args.device)
     print(f"Using device: {device}")
 
-    splits = getattr(args, "splits", {"train": 0.70, "val": 0.15, "test": 0.15})
+    splits = getattr(args, "splits", None)
+    if not isinstance(splits, dict):
+        raise ValueError("The 'splits' configuration is missing from the hparams file.")
     val_ratio = splits.get("val", 0.15)
     test_ratio = splits.get("test", 0.15)
     temp_ratio = val_ratio + test_ratio
@@ -552,18 +670,10 @@ def train(args: argparse.Namespace, model_class: type[nn.Module]) -> None:
     all_samples = collect_samples(class_names, frames_per_video=args.frames_per_video)
     if not all_samples:
         raise SystemExit("No samples found in annotations.csv")
+    
+    freeze_epochs = getattr(args, "freeze_epochs", 0)
         
-    if temp_ratio > 0:
-        train_samples, temp_samples = split_train_val_samples(all_samples, temp_ratio, args.seed)
-        if test_ratio > 0:
-            val_samples, test_samples = split_train_val_samples(temp_samples, test_ratio / temp_ratio, args.seed)
-        else:
-            val_samples = temp_samples
-            test_samples = []
-    else:
-        train_samples = all_samples
-        val_samples = []
-        test_samples = []
+    train_samples, val_samples, test_samples = split_by_video(all_samples, splits, args.seed)
 
     train_tf, eval_tf = get_transforms(args.image_size)
     train_loader = make_dataloader(
@@ -601,7 +711,16 @@ def train(args: argparse.Namespace, model_class: type[nn.Module]) -> None:
         compute_class_weights(train_samples, len(class_names), device) if args.use_class_weights else None
     )
     criterion = nn.CrossEntropyLoss(weight=class_weights)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    
+    # Handle Backbone Freezing (Warmup Phase)
+    if freeze_epochs > 0 and hasattr(model, "freeze_backbone"):
+        print(f"Starting warmup phase: Freezing backbone for first {freeze_epochs} epochs.")
+        model.freeze_backbone()
+        trainable_params = [p for p in model.parameters() if p.requires_grad]
+        optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
+    else:
+        optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
         mode="max",
@@ -717,6 +836,22 @@ def train(args: argparse.Namespace, model_class: type[nn.Module]) -> None:
             print(f"Early stopping triggered after {args.patience} epochs without val macro-F1 improvement.")
             break
 
+        # Check if it's time to unfreeze
+        if freeze_epochs > 0 and epoch == freeze_epochs and hasattr(model, "unfreeze_backbone"):
+            print(f"\nWarmup phase complete. Unfreezing backbone for full fine-tuning.")
+            model.unfreeze_backbone()
+            # Update optimizer to include all parameters
+            optimizer = torch.optim.AdamW(
+                model.parameters(),
+                lr=args.lr,
+                weight_decay=args.weight_decay,
+            )
+            # Re-sync scheduler if needed? Or just let it continue. 
+            # We'll re-sync to ensure it monitors the new loss landscape correctly.
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, mode="max", factor=0.5, patience=args.lr_patience
+            )
+
     history_path = run_dir / "history.csv"
     if history_rows:
         with history_path.open("w", newline="", encoding="utf-8") as f:
@@ -778,7 +913,9 @@ def test_only(args: argparse.Namespace, model_class: type[nn.Module]) -> None:
             "--class-names must match the class order used during training checkpoint creation."
         )
     class_names = checkpoint_class_names
-    splits = getattr(args, "splits", {"train": 0.70, "val": 0.15, "test": 0.15})
+    splits = getattr(args, "splits", None)
+    if not isinstance(splits, dict):
+        raise ValueError("The 'splits' configuration is missing from the hparams file.")
     val_ratio = splits.get("val", 0.15)
     test_ratio = splits.get("test", 0.15)
     temp_ratio = val_ratio + test_ratio
@@ -786,11 +923,7 @@ def test_only(args: argparse.Namespace, model_class: type[nn.Module]) -> None:
     
     # Recreate the exact same split using identical seed
     all_samples = collect_samples(class_names, frames_per_video=args.frames_per_video)
-    if temp_ratio > 0 and test_ratio > 0:
-        _, temp_samples = split_train_val_samples(all_samples, temp_ratio, seed)
-        _, test_samples = split_train_val_samples(temp_samples, test_ratio / temp_ratio, seed)
-    else:
-        test_samples = []
+    _, _, test_samples = split_by_video(all_samples, splits, seed)
 
     if not test_samples:
         raise SystemExit(f"No test images configured based on test_ratio: {test_ratio} or not found.")
@@ -849,25 +982,22 @@ def validate_only(args: argparse.Namespace, model_class: type[nn.Module]) -> Non
         )
     class_names = checkpoint_class_names
 
+    splits = getattr(args, "splits", None)
+    if not isinstance(splits, dict):
+        raise ValueError("The 'splits' configuration is missing from the hparams file.")
     all_samples = collect_samples(class_names, frames_per_video=args.frames_per_video)
     if not all_samples:
         raise SystemExit(f"No samples found for classes: {class_names}")
 
-    test_ratio = float(args.splits.get("test", 0.15))
-    val_ratio = float(args.splits.get("val", 0.15))
-    temp_ratio = val_ratio + test_ratio
+    _, val_samples, _ = split_by_video(all_samples, splits, args.seed)
 
-    _, temp_samples = split_train_val_samples(all_samples, temp_ratio, args.seed)
-    # temp_samples represents val + test. Now split test from temp_samples.
-    val_samples, test_samples = split_train_val_samples(temp_samples, test_ratio / temp_ratio, args.seed)
-
-    if not test_samples:
-        raise SystemExit("Not enough samples to construct a test split.")
+    if not val_samples:
+        raise SystemExit("Not enough samples to construct a validation split.")
 
     image_size = int(checkpoint.get("image_size", args.image_size))
     _, eval_tf = get_transforms(image_size)
     val_loader = make_dataloader(
-        test_samples,
+        val_samples,
         eval_tf,
         args.batch_size,
         False,

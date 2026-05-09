@@ -11,12 +11,6 @@ _ROOT = Path(__file__).resolve().parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from src.models.cnn_baseline.api import BaselineCNNAPI
-from src.models.cnn_advanced.api import AdvancedCNNAPI
-from src.models.resnet18.api import ResNet18API
-from src.models.vgg_16.api import VGG16API
-from src.models.cnn_lstm.api import CNNLSTMAPI
-
 
 def _clean_forwarded_args(raw_args: list[str]) -> list[str]:
     # Support both styles: `gateway train -- ...` and `gateway train ...`
@@ -27,50 +21,47 @@ def _clean_forwarded_args(raw_args: list[str]) -> list[str]:
 
 def _validate_model_folder(model_name: str) -> None:
     model_dir = _ROOT / "src" / "models" / model_name
-    if not model_dir.is_dir():
-        raise SystemExit(f"Error: Model directory not found: {model_dir}")
-
-    required_files = {
-        "api.py": "The entry point interface that exposes model tasks.",
-        "pipeline.py": "The core logic, data loading, and execution code.",
-        "hparams.yaml": "The default configuration and hyperparameters.",
-        "README.md": "The documentation explaining the model setup and parameters.",
-        "__init__.py": "Required to make the folder a valid Python package."
-    }
-
-    missing = []
-    for filename, desc in required_files.items():
-        if not (model_dir / filename).is_file():
-            missing.append(f"  - {filename}: {desc}")
-
-    if missing:
-        msg = f"\nError: Model '{model_name}' is missing required plug-and-play files:\n"
-        msg += "\n".join(missing)
-        raise SystemExit(msg)
+    if not model_dir.exists():
+        raise SystemExit(
+            f"Error: Model directory '{model_dir}' not found. "
+            f"Make sure you spelled the model name correctly."
+        )
+    
+    # Ensure the model has the necessary components
+    required_files = ["api.py", "hparams.yaml", "pipeline.py"]
+    for f in required_files:
+        if not (model_dir / f).exists():
+            raise SystemExit(f"Error: Required file '{f}' not found in model folder '{model_name}'.")
 
 
 def _ensure_output_folders(model_name: str) -> None:
-    """Creates output directories inside the model folder if they don't exist."""
     model_dir = _ROOT / "src" / "models" / model_name
     for folder in ["runs", "eval", "inference"]:
         (model_dir / folder).mkdir(exist_ok=True)
 
 
 def _get_model_api(model_name: str):
+    """Lazy load the requested model API to avoid slow imports of heavy libraries like torch."""
     if model_name == "cnn_baseline":
+        from src.models.cnn_baseline.api import BaselineCNNAPI
         return BaselineCNNAPI()
-    if model_name == "cnn_advanced":
+    elif model_name == "cnn_advanced":
+        from src.models.cnn_advanced.api import AdvancedCNNAPI
         return AdvancedCNNAPI()
-    if model_name == "resnet18":
+    elif model_name == "resnet18":
+        from src.models.resnet18.api import ResNet18API
         return ResNet18API()
-    if model_name == "vgg_16":
+    elif model_name == "vgg_16":
+        from src.models.vgg_16.api import VGG16API
         return VGG16API()
-    if model_name == "cnn_lstm":
+    elif model_name == "cnn_lstm":
+        from src.models.cnn_lstm.api import CNNLSTMAPI
         return CNNLSTMAPI()
-    raise SystemExit(
-        f"Unknown model '{model_name}'. Available models: "
-        "['cnn_baseline', 'cnn_advanced', 'resnet18', 'vgg_16', 'cnn_lstm']"
-    )
+    else:
+        raise SystemExit(
+            f"Unknown model '{model_name}'. Available models: "
+            "['cnn_baseline', 'cnn_advanced', 'resnet18', 'vgg_16', 'cnn_lstm']"
+        )
 
 
 def _available_tasks(api_obj) -> list[str]:
