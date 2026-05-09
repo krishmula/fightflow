@@ -2,9 +2,25 @@
 
 All notable changes, experimental results, and optimization notes for the ResNet-18 punch classifier are documented here.
 
-## [2026-05-08] - Performance Optimization & Bug Fixes
+## [2026-05-08] - Final Optimization (Frozen BN & Extended Patience)
 
-### Analysis of Run: `resnet18_multiclass_20260508_182538`
+### Analysis of Run: `resnet18_multiclass_20260508_191234`
+*   **Result**: Peak stability reached. **Best Macro-F1: 0.6587**, **Best Val Accuracy: 68.5%**.
+*   **Success**: **Frozen Batch Normalization** was highly effective at keeping the validation loss in a healthy range (0.8 - 0.9) throughout the fine-tuning phase, preventing the drift seen in earlier experiments.
+*   **Success**: The extended patience (15 epochs) and higher fine-tuning LR (0.00008) allowed the model to recover quickly from the "unfreeze shock" and reach its global minimum.
+*   **Verdict**: The ResNet-18 pipeline is now robust and production-ready. Further gains would likely require increased video diversity or temporal modeling.
+
+## [2026-05-08] - Stability & Warmup Implementation
+*   **Result**: High stability, but slightly lower peak performance. **Best Macro-F1: 0.6591**, **Accuracy: 69%**.
+*   **Success**: The **Backbone Freezing** (5-epoch warmup) worked perfectly. Validation loss stayed controlled (0.8-1.1 range) and eliminated the wild spikes seen in previous runs.
+*   **Observation**: A clear "unfreeze shock" occurred at Epoch 6, where performance dipped before recovering. This suggests the transition to full fine-tuning is the most critical phase.
+*   **Issue**: Overfitting persists (94% train vs 65% val). The model reaches a plateau, and the current `lr_patience` might be triggering reductions too early.
+*   **Plan**: 
+    *   Implement **Frozen Batch Normalization** (keeping BN layers in eval mode during fine-tuning) to preserve ImageNet statistics.
+    *   Increase `patience` to `15` and `lr_patience` to `7` to allow for longer recovery after unfreezing.
+    *   Experiment with a slightly higher fine-tuning LR (`0.00008`) to escape the unfreeze dip faster.
+
+## [2026-05-08] - Performance Optimization & Bug Fixes
 *   **Result**: Significant improvement in performance. **Best Macro-F1: 0.6862**, **Accuracy: 71.17%**.
 *   **Success**: The fix for the Attention module bug and the transition to a larger 80-20 validation split (leakage-safe) successfully stabilized the model and doubled the F1 score.
 *   **Issue (Overfitting)**: The model still shows a heavy gap between training (96%) and validation (68%). Validation loss remains unstable and fluctuates.

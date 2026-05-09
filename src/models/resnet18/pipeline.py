@@ -57,6 +57,17 @@ class ResNet18PunchClassifier(nn.Module):
             nn.Dropout(p=0.5),
             nn.Linear(num_features, num_classes)
         )
+        
+        # Flag to keep Batch Normalization layers in eval mode
+        self.freeze_bn = False
+
+    def train(self, mode: bool = True):
+        """Override train to keep BatchNorm layers in eval mode if freeze_bn is True."""
+        super().train(mode)
+        if mode and self.freeze_bn:
+            for m in self.modules():
+                if isinstance(m, nn.BatchNorm2d):
+                    m.eval()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Get features from ResNet backbone
@@ -83,6 +94,7 @@ class ResNet18PunchClassifier(nn.Module):
 
     def freeze_backbone(self):
         """Freeze all layers except the final classifier for initial training."""
+        self.freeze_bn = True # Keep BN frozen during initial phase
         for param in self.resnet.parameters():
             param.requires_grad = False
         for param in self.resnet.fc.parameters():
@@ -92,9 +104,15 @@ class ResNet18PunchClassifier(nn.Module):
                 param.requires_grad = True
 
     def unfreeze_backbone(self):
-        """Unfreeze all layers for fine-tuning."""
-        for param in self.resnet.parameters():
-            param.requires_grad = True
+        """Unfreeze all layers for fine-tuning, keeping BatchNorm frozen for stability."""
+        self.freeze_bn = True # Keep BN frozen even during fine-tuning for better stability
+        for name, module in self.named_modules():
+            if isinstance(module, nn.BatchNorm2d):
+                for param in module.parameters():
+                    param.requires_grad = False
+            else:
+                for param in module.parameters():
+                    param.requires_grad = True
 
 
 def train(args):
