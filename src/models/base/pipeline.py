@@ -414,6 +414,65 @@ def split_by_video(
     return train_samples, val_samples, test_samples
 
 
+def split_by_video(
+    samples: list[tuple[Path, int, int | None, str]],
+    splits: dict,
+    seed: int,
+) -> tuple[list, list, list]:
+    from collections import defaultdict
+
+    video_to_samples: dict[str, list] = defaultdict(list)
+    for s in samples:
+        video_to_samples[s[3]].append(s)
+
+    video_ids = sorted(video_to_samples.keys())
+    if len(video_ids) < 2:
+        return samples, [], []
+
+    video_labels = [
+        max(set(s[1] for s in video_to_samples[vid]), key=lambda lbl: sum(1 for s in video_to_samples[vid] if s[1] == lbl))
+        for vid in video_ids
+    ]
+
+    train_ratio = float(splits.get("train", 0.70))
+    val_ratio = float(splits.get("val", 0.15))
+    test_ratio = float(splits.get("test", 0.15))
+    temp_ratio = val_ratio + test_ratio
+
+    if temp_ratio <= 0:
+        return samples, [], []
+
+    try:
+        train_vids, temp_vids = train_test_split(
+            video_ids, test_size=temp_ratio, random_state=seed, stratify=video_labels
+        )
+    except ValueError:
+        train_vids, temp_vids = train_test_split(
+            video_ids, test_size=temp_ratio, random_state=seed, stratify=None
+        )
+
+    if test_ratio > 0 and len(temp_vids) >= 2:
+        vid_to_label = dict(zip(video_ids, video_labels))
+        temp_labels = [vid_to_label[v] for v in temp_vids]
+        try:
+            val_vids, test_vids = train_test_split(
+                temp_vids, test_size=test_ratio / temp_ratio, random_state=seed, stratify=temp_labels
+            )
+        except ValueError:
+            val_vids, test_vids = train_test_split(
+                temp_vids, test_size=test_ratio / temp_ratio, random_state=seed, stratify=None
+            )
+    else:
+        val_vids, test_vids = temp_vids, []
+
+    train_set, val_set, test_set = set(train_vids), set(val_vids), set(test_vids)
+    return (
+        [s for s in samples if s[3] in train_set],
+        [s for s in samples if s[3] in val_set],
+        [s for s in samples if s[3] in test_set],
+    )
+
+
 def compute_class_weights(
     samples: list[tuple], num_classes: int, device: torch.device
 ) -> torch.Tensor | None:
@@ -920,8 +979,7 @@ def test_only(args: argparse.Namespace, model_class: type[nn.Module]) -> None:
     test_ratio = splits.get("test", 0.15)
     temp_ratio = val_ratio + test_ratio
     seed = getattr(args, 'seed', 42)
-    
-    # Recreate the exact same split using identical seed
+
     all_samples = collect_samples(class_names, frames_per_video=args.frames_per_video)
     _, _, test_samples = split_by_video(all_samples, splits, seed)
 
