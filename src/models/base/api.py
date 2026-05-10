@@ -472,6 +472,15 @@ class BaseModelAPI(ABC):
         skipped_rows = []
 
         print(f"Starting clip extraction: {total_rows} annotations to process...")
+        
+        # Load splits and seed from the model's hparams.yaml ("common" section).
+        hparams_common = {}
+        default_config = getattr(self, "default_config", None)
+        if default_config and Path(default_config).is_file():
+            hparams_common = self._load_yaml(str(default_config)).get("common", {})
+        splits = hparams_common.get("splits", {"train": 0.8, "val": 0.2, "test": 0.0})
+        seed = hparams_common.get("seed", 42)
+        df = self._assign_splits_by_video(df, class_to_idx, splits, seed)
 
         prep_cfg = self.config.get("preparation", {})
         pre_frames = int(prep_cfg.get("clip_pre_frames", 10))
@@ -596,6 +605,7 @@ class BaseModelAPI(ABC):
                     "clip_end": frame_index + post_frames,
                     "clip_length": clip_len,
                     "punch_type": punch_type,
+                    "split": row["split"],
                 })
             cap.release()
 

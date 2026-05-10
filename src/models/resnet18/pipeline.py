@@ -69,8 +69,8 @@ class ResNet18PunchClassifier(nn.Module):
                 if isinstance(m, nn.BatchNorm2d):
                     m.eval()
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Get features from ResNet backbone
+    def get_features(self, x: torch.Tensor) -> torch.Tensor:
+        """Extract 512-dimensional features (after attention and pooling)."""
         x = self.resnet.conv1(x)
         x = self.resnet.bn1(x)
         x = self.resnet.relu(x)
@@ -81,13 +81,15 @@ class ResNet18PunchClassifier(nn.Module):
         x = self.resnet.layer3(x)
         x = self.resnet.layer4(x)
         
-        # Apply attention while still in 4D (before global average pooling)
         if self.use_attention:
             x = self.attention(x)
         
         x = self.resnet.avgpool(x)
-        x = torch.flatten(x, 1)
-        
+        return torch.flatten(x, 1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Get features
+        x = self.get_features(x)
         # Final classification
         x = self.resnet.fc(x)
         return x
@@ -113,6 +115,32 @@ class ResNet18PunchClassifier(nn.Module):
             else:
                 for param in module.parameters():
                     param.requires_grad = True
+
+    def unfreeze_partial(self):
+        """Surgical unfreeze: Only Layer 4 and Attention (keeps BN frozen)."""
+        self.freeze_bn = True
+        # First freeze everything
+        for param in self.parameters():
+            param.requires_grad = False
+        
+        # Unfreeze Layer 4
+        for param in self.resnet.layer4.parameters():
+            param.requires_grad = True
+            
+        # Unfreeze classifier
+        for param in self.resnet.fc.parameters():
+            param.requires_grad = True
+            
+        # Unfreeze attention
+        if self.use_attention:
+            for param in self.attention.parameters():
+                param.requires_grad = True
+                
+        # Ensure BatchNorm stays frozen even in Layer 4
+        for module in self.modules():
+            if isinstance(module, nn.BatchNorm2d):
+                for param in module.parameters():
+                    param.requires_grad = False
 
 
 def train(args):

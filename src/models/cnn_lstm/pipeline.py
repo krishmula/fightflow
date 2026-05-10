@@ -75,17 +75,8 @@ class CNNFeatureExtractor(nn.Module):
             x = self.model.features(x)
             return x.flatten(1)
         if self.backbone_name == "resnet18":
-            resnet = self.model.resnet
-            x = resnet.conv1(x)
-            x = resnet.bn1(x)
-            x = resnet.relu(x)
-            x = resnet.maxpool(x)
-            x = resnet.layer1(x)
-            x = resnet.layer2(x)
-            x = resnet.layer3(x)
-            x = resnet.layer4(x)
-            x = resnet.avgpool(x)
-            return torch.flatten(x, 1)
+            # Use get_features to ensure Attention is applied but classification is skipped
+            return self.model.get_features(x)
         if self.backbone_name == "vgg_16":
             x = self.model.vgg16.features(x)
             x = self.model.vgg16.avgpool(x)
@@ -164,7 +155,7 @@ def _maybe_load_checkpoint(model: nn.Module, checkpoint_path: Path | None, backb
         return
     if not checkpoint_path.is_file():
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
-    payload = torch.load(checkpoint_path, map_location=device)
+    payload = torch.load(checkpoint_path, map_location=device, weights_only=False)
     state = payload.get("model_state_dict", payload)
     model.load_state_dict(state, strict=False)
 
@@ -193,7 +184,8 @@ def train(args: argparse.Namespace) -> None:
     augment = getattr(args, "augment", None)
     if augment is None:
         raise ValueError("The 'augment' configuration is missing from the hparams file.")
-    train_tf = get_transforms(args.image_size, augment=bool(augment))
+    aug_cfg = config.get("augmentation", {})
+    train_tf = get_transforms(args.image_size, augment=bool(augment), aug_cfg=aug_cfg)
     eval_tf = get_transforms(args.image_size, augment=False)
 
     train_ds = ClipDataset(train_df, clip_length=args.clip_length, transform=train_tf)
@@ -234,12 +226,14 @@ def train(args: argparse.Namespace) -> None:
     )
     _maybe_load_checkpoint(backbone.model, cnn_ckpt, args.cnn_backbone, device)
 
-    freeze_backbone = getattr(args, "freeze_backbone", None)
-    if freeze_backbone is None:
-        raise ValueError("The 'freeze_backbone' configuration is missing from the hparams file.")
-    if freeze_backbone:
-        for param in backbone.parameters():
-            param.requires_grad = False
+    freeze_epochs = getattr(args, "freeze_epochs", 0)
+    if freeze_epochs > 0:
+        print(f"Starting warmup phase: Freezing backbone for first {freeze_epochs} epochs.")
+        if hasattr(backbone.model, "freeze_backbone"):
+            backbone.model.freeze_backbone()
+        else:
+            for param in backbone.parameters():
+                param.requires_grad = False
 
     model = CNNLSTMClassifier(
         backbone=backbone,
@@ -290,7 +284,7 @@ def train(args: argparse.Namespace) -> None:
         "use_class_weights": bool(args.use_class_weights),
         "cnn_backbone": args.cnn_backbone,
         "cnn_init": args.cnn_init,
-        "freeze_backbone": bool(freeze_backbone),
+        "freeze_epochs": freeze_epochs,
         "clip_length": args.clip_length,
         "lstm_hidden": args.lstm_hidden,
         "lstm_layers": args.lstm_layers,
@@ -319,6 +313,7 @@ def train(args: argparse.Namespace) -> None:
             criterion=criterion,
             device=device,
             optimizer=optimizer,
+            max_grad_norm=5.0,
         )
         val_metrics, _, _ = run_epoch(
             model=model,
@@ -342,6 +337,26 @@ def train(args: argparse.Namespace) -> None:
                 "val_macro_f1": val_metrics.macro_f1,
             }
         )
+
+        # Check if it's time to unfreeze
+        if freeze_epochs > 0 and epoch == freeze_epochs:
+            print(f"\nWarmup phase complete. Unfreezing backbone for full fine-tuning.")
+            if hasattr(backbone.model, "unfreeze_backbone"):
+                backbone.model.unfreeze_backbone()
+            else:
+                for param in backbone.parameters():
+                    param.requires_grad = True
+            
+            # Update optimizer with split learning rates
+            # Backbone gets 5x lower LR (2e-5) to maintain stability while allowing adaptation
+            optimizer = torch.optim.AdamW([
+                {'params': model.backbone.parameters(), 'lr': args.lr * 0.2},
+                {'params': [p for n, p in model.named_parameters() if 'backbone' not in n], 'lr': args.lr}
+            ], weight_decay=args.weight_decay)
+            
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, mode="max", factor=0.5, patience=max(1, args.lr_patience)
+            )
 
         print(
             "train_loss={:.4f} train_acc={:.4f} train_f1={:.4f} | "

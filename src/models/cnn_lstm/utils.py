@@ -1,248 +1,73 @@
-#!/usr/bin/env python3
-"""Shared utilities for CNN+LSTM training and evaluation."""
-
-from __future__ import annotations
-
-import csv
-import json
-import random
-from dataclasses import dataclass
-from pathlib import Path
-
-import numpy as np
 import pandas as pd
+import numpy as np
 import torch
 import torch.nn as nn
-import yaml
+from torch.utils.data import Dataset
+import torchvision.transforms as transforms
+import torchvision.transforms.functional as F
 from PIL import Image, UnidentifiedImageError
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
-from sklearn.model_selection import train_test_split
-from torch.utils.data import DataLoader, Dataset
-from torchvision import transforms
+from pathlib import Path
+from dataclasses import dataclass
 from tqdm import tqdm
+import yaml
+import json
+import random
+import os
 
-SUPPORTED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
-
-
-def project_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
-def resolve_project_path(path_value: str | Path) -> Path:
-    path = Path(path_value).expanduser()
-    if path.is_absolute():
-        return path
-    return (project_root() / path).resolve()
+# Constants
+SUPPORTED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp"}
 
 
-def resolve_latest_checkpoint(backbone: str) -> Path | None:
-    runs_dir = resolve_project_path(f"runs/{backbone}")
-    if not runs_dir.is_dir():
-        return None
-
-    candidates = [p for p in runs_dir.iterdir() if p.is_dir()]
-    if not candidates:
-        return None
-
-    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    for run_dir in candidates:
-        best_path = run_dir / "checkpoints" / "best.pt"
-        if best_path.is_file():
-            return best_path
-    return None
-
-
-def get_data_config() -> dict:
-    config_path = Path(__file__).parents[1] / "base" / "data_config.yaml"
-    with open(config_path, "r") as f:
-        return yaml.safe_load(f) or {}
-
-
-def parse_class_names(raw: str) -> list[str]:
-    names = [s.strip().lower() for s in raw.split(",") if s.strip()]
-    if not names:
-        raise ValueError("Class list cannot be empty")
-    return names
-
-
-def set_seed(seed: int) -> None:
+def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
 
-def resolve_device(device_arg: str) -> torch.device:
-    if device_arg == "auto":
+def resolve_device(device_name: str = "auto") -> torch.device:
+    if device_name == "auto":
         if torch.cuda.is_available():
             return torch.device("cuda")
-        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        if torch.backends.mps.is_available():
             return torch.device("mps")
         return torch.device("cpu")
-    return torch.device(device_arg)
+    return torch.device(device_name)
 
 
-def get_transforms(image_size: int, augment: bool) -> transforms.Compose:
-    config = get_data_config()
-    aug_cfg = config.get("augmentation", {})
+def resolve_project_path(path: str | Path) -> Path:
+    return Path(path).resolve()
 
-    norm_cfg = aug_cfg.get("normalize", {"mean": [0.485, 0.456, 0.406], "std": [0.229, 0.224, 0.225]})
-    normalize = transforms.Normalize(mean=norm_cfg["mean"], std=norm_cfg["std"])
 
-    tf = [transforms.Resize((image_size, image_size))]
+def get_data_config(config_path: Path | None = None) -> dict:
+    if config_path is None:
+        config_path = Path(__file__).parent.parent.parent / "models" / "base" / "data_config.yaml"
+    with open(config_path, "r") as f:
+        return yaml.safe_load(f)
 
-    if augment:
-        flip_p = aug_cfg.get("random_horizontal_flip_p", 0.5)
-        jitter_cfg = aug_cfg.get("color_jitter", {"brightness": 0.2, "contrast": 0.2, "saturation": 0.15})
-        rotation_cfg = aug_cfg.get("random_rotation", {"degrees": 15})
-        affine_cfg = aug_cfg.get(
-            "random_affine",
-            {"degrees": 0, "translate": [0.1, 0.1], "scale": [0.9, 1.1], "shear": 5},
-        )
-        erasing_cfg = aug_cfg.get("random_erasing", {"p": 0.0, "scale": [0.02, 0.1], "ratio": [0.3, 3.3]})
 
-        tf.append(transforms.RandomHorizontalFlip(p=flip_p))
-        tf.append(
-            transforms.ColorJitter(
-                brightness=jitter_cfg["brightness"],
-                contrast=jitter_cfg["contrast"],
-                saturation=jitter_cfg["saturation"],
-            )
-        )
-        if rotation_cfg.get("degrees", 0) > 0:
-            tf.append(transforms.RandomRotation(degrees=rotation_cfg["degrees"]))
-        tf.append(
-            transforms.RandomAffine(
-                degrees=affine_cfg["degrees"],
-                translate=affine_cfg["translate"],
-                scale=affine_cfg["scale"],
-                shear=affine_cfg["shear"],
-            )
-        )
-
-        tf.extend([transforms.ToTensor(), normalize])
-        if erasing_cfg.get("p", 0) > 0:
-            tf.append(
-                transforms.RandomErasing(
-                    p=erasing_cfg["p"],
-                    scale=erasing_cfg["scale"],
-                    ratio=erasing_cfg["ratio"],
-                )
-            )
-        return transforms.Compose(tf)
-
-    tf.extend([transforms.ToTensor(), normalize])
-    return transforms.Compose(tf)
+def parse_class_names(class_names: str) -> list[str]:
+    return [c.strip() for c in class_names.split(",")]
 
 
 def load_manifest(manifest_path: Path) -> pd.DataFrame:
-    if not manifest_path.is_file():
-        raise FileNotFoundError(f"Clip manifest not found: {manifest_path}")
-    df = pd.read_csv(manifest_path)
-    required = {"clip_dir", "label", "video_id"}
-    missing = required - set(df.columns)
-    if missing:
-        raise SystemExit(f"Manifest missing columns: {sorted(missing)}")
-    df["clip_dir"] = df["clip_dir"].astype(str)
-    df["video_id"] = df["video_id"].astype(str)
-    df["label"] = df["label"].astype(int)
-    return df
+    if not manifest_path.exists():
+        raise FileNotFoundError(f"Manifest not found: {manifest_path}")
+    return pd.read_csv(manifest_path)
 
 
-def split_by_video(df: pd.DataFrame, splits: dict, seed: int) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    train_ratio = float(splits.get("train", 0.7))
-    val_ratio = float(splits.get("val", 0.15))
-    test_ratio = float(splits.get("test", 0.15))
+def save_json(path: Path, data: dict):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(data, f, indent=4)
 
-    video_ids = sorted(df["video_id"].unique().tolist())
-    if len(video_ids) < 2:
-        return df, df.iloc[0:0].copy(), df.iloc[0:0].copy()
 
-    total_ratio = train_ratio + val_ratio + test_ratio
-    if total_ratio <= 0:
-        return df, df.iloc[0:0].copy(), df.iloc[0:0].copy()
-
-    split_ratios = {
-        "train": train_ratio / total_ratio,
-        "val": val_ratio / total_ratio,
-        "test": test_ratio / total_ratio,
-    }
-    split_ratios = {k: v for k, v in split_ratios.items() if v > 0}
-
-    labels = sorted(df["label"].unique().tolist())
-    video_label_counts = (
-        df.groupby(["video_id", "label"]).size().unstack(fill_value=0).reindex(video_ids, fill_value=0)
-    )
-    video_totals = video_label_counts.sum(axis=1)
-
-    total_samples = float(video_totals.sum())
-    targets_total = {k: total_samples * v for k, v in split_ratios.items()}
-    label_totals = df["label"].value_counts().to_dict()
-    targets_labels = {
-        label: {k: float(label_totals.get(label, 0)) * split_ratios[k] for k in split_ratios}
-        for label in labels
-    }
-
-    rng = random.Random(seed)
-    assignments = {k: [] for k in split_ratios}
-    current_total = {k: 0.0 for k in split_ratios}
-    current_labels = {label: {k: 0.0 for k in split_ratios} for label in labels}
-
-    shuffled = video_ids[:]
-    rng.shuffle(shuffled)
-    shuffled.sort(key=lambda vid: (video_totals.loc[vid], str(vid)), reverse=True)
-
-    def cost(split_name: str, vid_counts: dict, vid_total: float) -> float:
-        target_total = targets_total.get(split_name, 0.0)
-        if target_total <= 0:
-            return float("inf")
-
-        total_after = current_total[split_name] + vid_total
-        total_penalty = ((total_after - target_total) / target_total) ** 2
-
-        label_penalty = 0.0
-        label_count = 0
-        for label in labels:
-            target_label = targets_labels[label].get(split_name, 0.0)
-            if target_label <= 0:
-                continue
-            label_count += 1
-            label_after = current_labels[label][split_name] + float(vid_counts.get(label, 0))
-            label_penalty += ((label_after - target_label) / target_label) ** 2
-
-        if label_count:
-            label_penalty /= label_count
-        return total_penalty + label_penalty
-
-    def fill_ratio(split_name: str) -> float:
-        target_total = targets_total.get(split_name, 0.0)
-        if target_total <= 0:
-            return float("inf")
-        return current_total[split_name] / target_total
-
-    for vid in shuffled:
-        vid_counts = video_label_counts.loc[vid].to_dict()
-        vid_total = float(video_totals.loc[vid])
-        candidates = list(split_ratios.keys())
-        best_split = min(
-            candidates,
-            key=lambda s: (cost(s, vid_counts, vid_total), fill_ratio(s), current_total[s]),
-        )
-        assignments[best_split].append(vid)
-        current_total[best_split] += vid_total
-        for label in labels:
-            current_labels[label][best_split] += float(vid_counts.get(label, 0))
-
-    train_vids = assignments.get("train", [])
-    val_vids = assignments.get("val", [])
-    test_vids = assignments.get("test", [])
-
-    train_df = df[df["video_id"].isin(train_vids)].reset_index(drop=True)
-    val_df = df[df["video_id"].isin(val_vids)].reset_index(drop=True)
-    test_df = df[df["video_id"].isin(test_vids)].reset_index(drop=True)
-    return train_df, val_df, test_df
+def load_yaml(path: Path) -> dict:
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
 
 
 def compute_class_weights(labels: np.ndarray, num_classes: int, device: torch.device) -> torch.Tensor | None:
@@ -275,30 +100,52 @@ class ClipDataset(Dataset):
     def __len__(self) -> int:
         return len(self.df)
 
+    def _apply_consistent_transform(self, images: list[Image.Image]) -> torch.Tensor:
+        cfg = self.transform
+        if not isinstance(cfg, dict):
+            return torch.stack([cfg(img) for img in images])
+
+        aug_cfg = cfg["aug_cfg"]
+        image_size = cfg["size"]
+        do_flip = random.random() < aug_cfg.get("random_horizontal_flip_p", 0.5)
+        jitter_cfg = aug_cfg.get("color_jitter", {"brightness": 0.2, "contrast": 0.2, "saturation": 0.15})
+        b_f = random.uniform(max(0, 1 - jitter_cfg["brightness"]), 1 + jitter_cfg["brightness"])
+        c_f = random.uniform(max(0, 1 - jitter_cfg["contrast"]), 1 + jitter_cfg["contrast"])
+        s_f = random.uniform(max(0, 1 - jitter_cfg["saturation"]), 1 + jitter_cfg["saturation"])
+        rot_deg = aug_cfg.get("random_rotation", {"degrees": 15})["degrees"]
+        angle = random.uniform(-rot_deg, rot_deg)
+        aff_cfg = aug_cfg.get("random_affine", {"degrees": 0, "translate": [0.1, 0.1], "scale": [0.9, 1.1], "shear": 5})
+        tx = random.uniform(-aff_cfg["translate"][0] * image_size, aff_cfg["translate"][0] * image_size)
+        ty = random.uniform(-aff_cfg["translate"][1] * image_size, aff_cfg["translate"][1] * image_size)
+        scale = random.uniform(aff_cfg["scale"][0], aff_cfg["scale"][1])
+        shear = random.uniform(-aff_cfg["shear"], aff_cfg["shear"])
+
+        frames = []
+        for img in images:
+            img = F.resize(img, (image_size, image_size))
+            if do_flip: img = F.hflip(img)
+            img = F.adjust_brightness(img, b_f)
+            img = F.adjust_contrast(img, c_f)
+            img = F.adjust_saturation(img, s_f)
+            img = F.affine(img, angle=angle, translate=(tx, ty), scale=scale, shear=shear)
+            t = F.to_tensor(img)
+            t = F.normalize(t, mean=cfg["norm_cfg"]["mean"], std=cfg["norm_cfg"]["std"])
+            frames.append(t)
+        return torch.stack(frames)
+
     def __getitem__(self, index: int):
         row = self.df.iloc[index]
         clip_dir = Path(row["clip_dir"])
         label = int(row["label"])
-
-        frame_paths = sorted(
-            [p for p in clip_dir.iterdir() if p.suffix.lower() in SUPPORTED_IMAGE_EXTS]
-        )
-        if not frame_paths:
-            raise RuntimeError(f"No frames found in clip dir: {clip_dir}")
-
-        indices = select_frame_indices(len(frame_paths), self.clip_length)
-        frames = []
-        for idx in indices:
-            frame_path = frame_paths[idx]
-            try:
-                image = Image.open(frame_path).convert("RGB")
-            except (UnidentifiedImageError, OSError) as exc:
-                raise RuntimeError(f"Could not read image: {frame_path}") from exc
-            if self.transform is not None:
-                image = self.transform(image)
-            frames.append(image)
-
-        clip = torch.stack(frames, dim=0)
+        fps = sorted([p for p in clip_dir.iterdir() if p.suffix.lower() in SUPPORTED_IMAGE_EXTS])
+        if not fps: raise RuntimeError(f"No frames in: {clip_dir}")
+        idx = select_frame_indices(len(fps), self.clip_length)
+        imgs = []
+        for i in idx:
+            try: imgs.append(Image.open(fps[i]).convert("RGB"))
+            except: raise RuntimeError(f"Error reading: {fps[i]}")
+        if self.transform: clip = self._apply_consistent_transform(imgs)
+        else: clip = torch.stack([F.to_tensor(F.resize(img, (224, 224))) for img in imgs])
         return clip, label
 
 
@@ -309,135 +156,93 @@ class EpochMetrics:
     macro_f1: float
 
 
-def run_epoch(
-    model: nn.Module,
-    loader: DataLoader,
-    criterion: nn.Module,
-    device: torch.device,
-    optimizer: torch.optim.Optimizer | None = None,
-) -> tuple[EpochMetrics, np.ndarray, np.ndarray]:
+def run_epoch(loader, model, criterion, device, optimizer=None, max_grad_norm=1.0):
     is_train = optimizer is not None
     model.train() if is_train else model.eval()
-
-    losses: list[float] = []
-    y_true: list[int] = []
-    y_pred: list[int] = []
-
+    losses, y_t, y_p = [], [], []
     use_amp = device.type == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp) if is_train else None
-
     progress = tqdm(loader, leave=False, unit="batch")
     for clips, targets in progress:
-        clips = clips.to(device, non_blocking=True)
-        targets = targets.to(device, non_blocking=True)
-
-        if is_train:
-            optimizer.zero_grad(set_to_none=True)
-
+        clips, targets = clips.to(device), targets.to(device)
+        if is_train: optimizer.zero_grad(set_to_none=True)
         with torch.set_grad_enabled(is_train):
             with torch.amp.autocast("cuda", enabled=use_amp):
                 logits = model(clips)
                 loss = criterion(logits, targets)
-
-            if is_train and scaler is not None:
+        if is_train:
+            if scaler:
                 scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
-
-        losses.append(float(loss.detach().item()))
-        preds = torch.argmax(logits, dim=1)
-
-        y_true.extend(targets.detach().cpu().numpy().tolist())
-        y_pred.extend(preds.detach().cpu().numpy().tolist())
-
-        progress.set_postfix(loss=f"{loss.item():.4f}")
-
-    y_true_np = np.array(y_true, dtype=np.int64)
-    y_pred_np = np.array(y_pred, dtype=np.int64)
-
-    mean_loss = float(np.mean(losses)) if losses else 0.0
-    acc = float(accuracy_score(y_true_np, y_pred_np)) if len(y_true_np) else 0.0
-    macro_f1 = float(f1_score(y_true_np, y_pred_np, average="macro", zero_division=0)) if len(y_true_np) else 0.0
-    return EpochMetrics(loss=mean_loss, accuracy=acc, macro_f1=macro_f1), y_true_np, y_pred_np
+                if max_grad_norm: scaler.unscale_(optimizer); nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+                scaler.step(optimizer); scaler.update()
+            else:
+                loss.backward()
+                if max_grad_norm: nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+                optimizer.step()
+        losses.append(float(loss.item()))
+        y_t.extend(targets.cpu().tolist())
+        y_p.extend(torch.argmax(logits, 1).cpu().tolist())
+        progress.set_postfix(loss=np.mean(losses[-10:]))
+    from sklearn.metrics import accuracy_score, f1_score
+    return EpochMetrics(float(np.mean(losses)), accuracy_score(y_t, y_p), f1_score(y_t, y_p, average="macro")), np.array(y_t), np.array(y_p)
 
 
-def save_json(path: Path, payload: dict) -> None:
+def save_checkpoint(**kwargs):
+    path = kwargs.pop("path")
+    model = kwargs.pop("model")
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2)
+    ckpt = {"model_state_dict": model.state_dict()}
+    ckpt.update(kwargs)
+    torch.save(ckpt, path)
 
 
-def save_confusion_matrix_csv(path: Path, matrix: np.ndarray, class_names: list[str]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["true/pred", *class_names])
-        for class_name, row in zip(class_names, matrix.tolist()):
-            writer.writerow([class_name, *row])
+def load_checkpoint(path, device):
+    return torch.load(path, map_location=device, weights_only=False)
 
 
-def evaluate_and_save(
-    model: nn.Module,
-    loader: DataLoader,
-    criterion: nn.Module,
-    device: torch.device,
-    class_names: list[str],
-    out_dir: Path,
-    split_name: str,
-) -> dict:
-    metrics, y_true, y_pred = run_epoch(model, loader, criterion, device, optimizer=None)
+def resolve_latest_checkpoint(backbone):
+    base_dir = Path("runs") / backbone
+    if not base_dir.exists(): return None
+    runs = sorted([d for d in base_dir.iterdir() if d.is_dir()], key=lambda x: x.stat().st_mtime, reverse=True)
+    for run in runs:
+        ckpt = run / "checkpoints" / "best.pt"
+        if ckpt.exists(): return ckpt
+    return None
 
-    labels = list(range(len(class_names)))
-    report = classification_report(
-        y_true,
-        y_pred,
-        labels=labels,
-        target_names=class_names,
-        output_dict=True,
-        zero_division=0,
-    )
-    cm = confusion_matrix(y_true, y_pred, labels=labels)
 
-    payload = {
-        "split": split_name,
-        "loss": metrics.loss,
-        "accuracy": metrics.accuracy,
-        "macro_f1": metrics.macro_f1,
-        "num_samples": int(len(y_true)),
+def split_by_video(df, splits, seed=42):
+    if "split" in df.columns:
+        if any(s in ["train", "val", "test"] for s in df["split"].dropna().unique()):
+            return df[df["split"] == "train"], df[df["split"] == "val"], df[df["split"] == "test"]
+    v_ids = sorted(df["video_id"].unique())
+    random.Random(seed).shuffle(v_ids)
+    n = len(v_ids)
+    t_e = int(n * splits.get("train", 0.7))
+    v_e = t_e + int(n * splits.get("val", 0.15))
+    t_ids, v_ids_s, te_ids = set(v_ids[:t_e]), set(v_ids[t_e:v_e]), set(v_ids[v_e:])
+    df_t, df_v, df_te = df[df["video_id"].isin(t_ids)].copy(), df[df["video_id"].isin(v_ids_s)].copy(), df[df["video_id"].isin(te_ids)].copy()
+    for d, s in zip([df_t, df_v, df_te], ["train", "val", "test"]): d["split"] = s
+    return df_t, df_v, df_te
+
+
+def evaluate_and_save(model, loader, criterion, device, class_names, out_dir, split_name):
+    # Perform a final clean evaluation
+    metrics, y_true, y_pred = run_epoch(loader, model, criterion, device)
+    
+    from sklearn.metrics import classification_report, confusion_matrix
+    out_dir.mkdir(parents=True, exist_ok=True)
+    rep = {
+        "metrics": {"loss": metrics.loss, "accuracy": metrics.accuracy, "macro_f1": metrics.macro_f1},
+        "classification_report": classification_report(y_true, y_pred, target_names=class_names, output_dict=True)
     }
-
-    save_json(out_dir / f"{split_name}_metrics.json", payload)
-    save_json(out_dir / f"{split_name}_classification_report.json", report)
-    save_confusion_matrix_csv(out_dir / f"{split_name}_confusion_matrix.csv", cm, class_names)
-    return payload
-
-
-def load_checkpoint(path: Path, device: torch.device) -> dict:
-    if not path.is_file():
-        raise FileNotFoundError(f"Checkpoint not found: {path}")
-    return torch.load(path, map_location=device)
+    save_json(out_dir / f"{split_name}_metrics.json", rep)
+    cm = confusion_matrix(y_true, y_pred)
+    pd.DataFrame(cm, index=class_names, columns=class_names).to_csv(out_dir / f"{split_name}_confusion_matrix.csv")
+    return rep["metrics"]
 
 
-def save_checkpoint(
-    path: Path,
-    model: nn.Module,
-    class_names: list[str],
-    image_size: int,
-    epoch: int,
-    best_val_macro_f1: float,
-    cnn_backbone: str,
-    clip_length: int,
-) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(
-        {
-            "model_state_dict": model.state_dict(),
-            "class_names": class_names,
-            "image_size": image_size,
-            "epoch": epoch,
-            "best_val_macro_f1": best_val_macro_f1,
-            "cnn_backbone": cnn_backbone,
-            "clip_length": clip_length,
-        },
-        path,
-    )
+def get_transforms(image_size, augment=False, aug_cfg=None):
+    if aug_cfg is None: aug_cfg = {}
+    n_cfg = aug_cfg.get("normalize", {"mean": [0.485, 0.456, 0.406], "std": [0.229, 0.224, 0.225]})
+    if not augment: return transforms.Compose([transforms.Resize((image_size, image_size)), transforms.ToTensor(), transforms.Normalize(mean=n_cfg["mean"], std=n_cfg["std"])])
+    return {"size": image_size, "aug_cfg": aug_cfg, "norm_cfg": n_cfg}

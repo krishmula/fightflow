@@ -16,13 +16,13 @@ Optional overrides (same defaults as training):
 
 Comparing models:
   - Base CNN models (cnn_baseline, cnn_advanced, resnet18, vgg_16) all share the same
-    split_by_video implementation, so with an identical seed they receive the exact same
-    video assignments. Their accuracy numbers are directly comparable.
+    split_by_video (GSGS) implementation as CNN-LSTM, so with an identical seed they
+    receive the same leakage-safe video assignments. Their accuracy numbers are
+    directly comparable only if both models use the same split ratios and seed.
 
-  - CNN-LSTM uses a different splitting algorithm (greedy cost-minimization vs sklearn
-    stratified split used by the base models), so its train/val/test video assignments
-    will differ slightly even with the same seed. Do not compare CNN-LSTM accuracy
-    numbers directly against the base CNN models — the test sets are not identical.
+  - CNN-LSTM operates on clip-level samples while base CNN models operate on
+    frame-level samples, so even with identical video splits the sample counts will
+    differ. Do not compare raw accuracy numbers directly across the two model families.
 """
 
 from __future__ import annotations
