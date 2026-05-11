@@ -32,11 +32,11 @@ common:
   # Number of initial epochs with frozen backbone (only train LSTM/Attention)
   freeze_epochs: 5
   # LSTM hidden size
-  lstm_hidden: 512
+  lstm_hidden: 128
   # LSTM layer count
-  lstm_layers: 1
+  lstm_layers: 2
   # LSTM dropout between layers (ignored if lstm_layers = 1)
-  lstm_dropout: 0.0
+  lstm_dropout: 0.5
   # Use a bidirectional LSTM
   lstm_bidirectional: true
   # LSTM pooling strategy: last or mean
@@ -51,10 +51,10 @@ train:
   class_names: straight,hook,uppercut,none
   # Total number of training loops over the entire dataset
   epochs: 50
-  # Learning rate for the AdamW optimizer (LSTM and fine-tuning)
-  lr: 0.0001
+  # Learning rate for the AdamW optimizer
+  lr: 0.0003
   # Weight decay (L2 penalty) for the optimizer
-  weight_decay: 0.0001
+  weight_decay: 0.01
   # Epochs to wait for val_macro_f1 to improve before early stopping
   patience: 15
   # Epochs to wait before reducing the learning rate

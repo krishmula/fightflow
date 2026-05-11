@@ -98,3 +98,23 @@
     *   Val loss becomes highly volatile post-unfreeze (spikes to 2.29 - 3.20), indicating the backbone LR (2e-5) is still too aggressive for this dataset size.
     *   Training Macro-F1 continued climbing to **0.965** by Epoch 18, confirming severe overfitting after unfreezing.
     *   Did **not** reach the 0.70 Macro-F1 target.
+
+## [2026-05-10] - Addressing Overfitting with Increased Regularization
+
+### Summary of Run: `cnn_lstm_20260510_171600`
+*   **Backbone**: ResNet-18 (`cnn_init: latest`)
+*   **Config**: `clip_length: 12`, `lstm_hidden: 256`, `lr: 0.0003`, `weight_decay: 0.0001`
+*   **Dataset**: 1754 train clips / 328 val clips / 278 test clips
+*   **Results**:
+    *   Peak Val Macro-F1: **0.5614** at Epoch 5.
+    *   Test Macro-F1: **0.6416**, Test Accuracy: 74.8%.
+    *   Early stopping triggered after 15 epochs without improvement (Epoch 20).
+*   **Observation**:
+    *   Severe Overfitting: Training loss dropped to 0.30 (acc 86.6%), but validation loss skyrocketed from 1.15 to 1.66.
+    *   Model capacity (lstm_hidden=256) is too high for the dataset size.
+    *   L2 Regularization (weight_decay=0.0001) and Dropout (0.3 in classifier, 0 in LSTM) were insufficient.
+*   **Next Steps (Implemented)**:
+    *   Increase `lstm_layers` to 2 and set `lstm_dropout` to 0.5.
+    *   Increase classifier dropout to 0.5.
+    *   Increase `weight_decay` to 0.01.
+    *   Reduce `lstm_hidden` to 128.

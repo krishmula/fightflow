@@ -118,7 +118,7 @@ class CNNLSTMClassifier(nn.Module):
         )
         lstm_out_dim = lstm_hidden * (2 if lstm_bidirectional else 1)
         self.classifier = nn.Sequential(
-            nn.Dropout(p=0.3),
+            nn.Dropout(p=0.5),
             nn.Linear(lstm_out_dim, num_classes),
         )
 
