@@ -6,7 +6,7 @@ common:
   # Target width and height to resize all frames
   image_size: 224
   # Number of samples per batch
-  batch_size: 8
+  batch_size: 16
   # Number of subprocesses to use for data loading
   num_workers: 2
   # Hardware to use (auto, cpu, cuda, mps)
@@ -16,8 +16,8 @@ common:
   # Data splitting configuration
   splits:
     train: 0.80
-    val: 0.10
-    test: 0.10
+    val: 0.20
+    test: 0.00
   # Fixed number of frames per clip fed to the LSTM (clips are subsampled/padded to this length).
   # If you change this, consider updating clip_pre_frames/clip_post_frames in base/data_config.yaml and re-running prepare_data.
   clip_length: 12
@@ -29,10 +29,10 @@ common:
   #   - random: Random init (no pretrained weights)
   #   - <path>: Explicit checkpoint path (e.g., runs/<cnn_backbone>/<run_name>/checkpoints/best.pt)
   cnn_init: latest
-  # Freeze the CNN backbone during LSTM training
-  freeze_backbone: true
+  # Number of initial epochs with frozen backbone (only train LSTM/Attention)
+  freeze_epochs: 5
   # LSTM hidden size
-  lstm_hidden: 256
+  lstm_hidden: 512
   # LSTM layer count
   lstm_layers: 1
   # LSTM dropout between layers (ignored if lstm_layers = 1)
@@ -50,15 +50,15 @@ train:
   # Comma-separated list of classes
   class_names: straight,hook,uppercut,none
   # Total number of training loops over the entire dataset
-  epochs: 25
-  # Learning rate for the AdamW optimizer
+  epochs: 50
+  # Learning rate for the AdamW optimizer (LSTM and fine-tuning)
   lr: 0.0001
   # Weight decay (L2 penalty) for the optimizer
   weight_decay: 0.0001
   # Epochs to wait for val_macro_f1 to improve before early stopping
-  patience: 6
+  patience: 15
   # Epochs to wait before reducing the learning rate
-  lr_patience: 2
+  lr_patience: 3
   # Whether to compute and apply class weights to handle imbalanced datasets
   use_class_weights: true
   # Directory where run artifacts (checkpoints, metrics) will be saved
