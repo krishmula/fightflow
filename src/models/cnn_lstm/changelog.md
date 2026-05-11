@@ -118,3 +118,17 @@
     *   Increase classifier dropout to 0.5.
     *   Increase `weight_decay` to 0.01.
     *   Reduce `lstm_hidden` to 128.
+
+## [2026-05-10] - Target Reached: Heavy Regularization Success
+
+### Summary of Run: `cnn_lstm_20260510_184115`
+*   **Backbone**: ResNet-18 (`cnn_init: latest`)
+*   **Config**: `clip_length: 12`, `freeze_epochs: 5`, `lstm_hidden: 128`, `lstm_layers: 2`, `lstm_dropout: 0.5`, `weight_decay: 0.01`, `classifier_dropout: 0.5`, `lr: 0.0003`
+*   **Results**:
+    *   Peak Val Macro-F1: **0.8187** at Epoch 17.
+    *   Validation Accuracy: **84.06%** | Val Loss: **0.3938**.
+    *   Early stopping triggered after 15 epochs without improvement (Epoch 32).
+*   **Observation**:
+    *   **Goal Reached!** The model significantly surpassed the 0.70 Macro-F1 target.
+    *   The combination of heavy regularization (weight decay 0.01 + double dropout layers at 0.5) and the smaller LSTM capacity (128 hidden) worked perfectly to combat the overfitting seen in previous runs.
+    *   The model was able to train stably and peaked at Epoch 17 (well after the backbone unfroze at Epoch 5), indicating the LSTM and backbone were learning effectively together.
