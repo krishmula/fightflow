@@ -7,19 +7,20 @@ common:
   device: auto
   # Random seed for reproducibility
   seed: 42
+  frames_per_video: 1
   # Data splitting configuration
   splits:
     train: 0.80
-    val: 0.10
-    test: 0.10
+    val: 0.20
+    test: 0.00
 
 train:
   class_names: straight,hook,uppercut,none
   epochs: 30
   lr: 0.0001
-  weight_decay: 0.00001
-  patience: 10
-  lr_patience: 5
+  weight_decay: 0.0001
+  patience: 15
+  lr_patience: 7
   use_class_weights: true
   use_attention: false
   output_dir: runs/vgg_16
