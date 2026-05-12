@@ -43,6 +43,8 @@ common:
   lstm_output: mean
   # Optional projection dim before LSTM (0/empty = no projection)
   feature_dim: 512
+  # Enable motion features (frame differences) as LSTM input
+  use_motion_features: true
   # Enable training-time augmentation from base/data_config.yaml
   augment: true
 

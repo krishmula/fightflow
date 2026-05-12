@@ -33,17 +33,21 @@ preparation:
   clip_post_frames: 4
 
 # Data Augmentation Configuration
+# -------------------------------
+# These settings are SHARED across models (ResNet18 and CNN-LSTM) to ensure 
+# visual consistency. Temporal models (CNN-LSTM) will additionally use 
+# motion-specific logic found in their respective pipelines.
 augmentation:
-  # Basic augmentations
-  random_horizontal_flip_p: 0.2
+  # Basic Spatial Augmentations (Shared by all image-based models)
+  random_horizontal_flip_p: 0.5
   color_jitter:
     brightness: 0.15
     contrast: 0.15
     saturation: 0.1
   
-  # Motion-specific augmentations for punch classification
+  # Motion-specific augmentations (Used by CNN-LSTM; ignored by ResNet18)
   random_rotation:
-    degrees: 6  # Small rotations to simulate motion variations
+    degrees: 15  # Increased from 6 for better regularization
   random_affine:
     degrees: 0
     translate: [0.05, 0.03]  # Small translations

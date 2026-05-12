@@ -2,6 +2,21 @@
 
 All notable changes, experimental results, and optimization notes for the ResNet-18 punch classifier are documented here.
 
+## [2026-05-12] - Breaking Overfitting: Regularization & Split LR
+
+### Analysis of Run: `resnet18_multiclass_20260512_134205`
+*   **Result**: High stability. **Best Macro-F1: 0.5806** at Epoch 28.
+*   **Stability**: Unlike previous runs, this run showed no "unfreeze shock" or performance collapse at Epoch 6.
+*   **Success**: **Split Learning Rate** (Backbone 1e-5, Head 5e-4) successfully protected the pretrained features during the transition to full fine-tuning.
+*   **Success**: **RandomResizedCrop** and increased **Weight Decay (0.01)** successfully "broke" the model's ability to cheat by memorizing backgrounds, yielding an "honest" baseline for temporal modeling.
+*   **Verdict**: While the final F1 (0.58) is numerically lower than the "cheating" run (0.65), this model is significantly more robust and is the selected candidate for the CNN-LSTM backbone.
+
+### Technical Improvements:
+*   **Architecture**: Modified `base/pipeline.py` to support **Split Learning Rates** automatically (detects ResNet/VGG backbones and applies 0.1x LR ratio).
+*   **Regularization**: Added **Label Smoothing (0.1)** to the loss function to prevent over-confidence.
+*   **Augmentation**: Switched from static `Resize` to **`RandomResizedCrop`** in the base training pipeline.
+*   **Configuration**: Increased standard **Weight Decay** and **Rotation** (15 deg) settings.
+
 ## [2026-05-08] - Final Optimization (Frozen BN & Extended Patience)
 
 ### Analysis of Run: `resnet18_multiclass_20260508_191234`

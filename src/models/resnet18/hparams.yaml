@@ -28,10 +28,12 @@ train:
   epochs: 30
   # Number of initial epochs with frozen backbone (only train classifier/attention)
   freeze_epochs: 5
-  # Smaller learning rate for fine-tuning pretrained model (refined for stability)
-  lr: 0.00008
-  # Weight decay (L2 penalty) for the optimizer (increased for better regularization)
-  weight_decay: 0.0001
+  # Increased learning rate to overcome higher regularization
+  lr: 0.0005
+  # Balanced weight decay for regularization
+  weight_decay: 0.01
+  # Label smoothing to prevent over-confidence
+  label_smoothing: 0.1
   # Epochs to wait for val_macro_f1 to improve before early stopping
   patience: 15
   # Epochs to wait before reducing the learning rate

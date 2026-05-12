@@ -151,7 +151,7 @@ def get_transforms(image_size: int):
     erasing_cfg = aug_cfg.get("random_erasing", {"p": 0.3, "scale": [0.02, 0.1], "ratio": [0.3, 3.3]})
     
     train_transforms = [
-        transforms.Resize((image_size, image_size)),
+        transforms.RandomResizedCrop(image_size, scale=(0.8, 1.0)),
         transforms.RandomHorizontalFlip(p=flip_p),
         transforms.ColorJitter(
             brightness=jitter_cfg["brightness"], 
@@ -714,7 +714,9 @@ def train(args: argparse.Namespace, model_class: type[nn.Module]) -> None:
     class_weights = (
         compute_class_weights(train_samples, len(class_names), device) if args.use_class_weights else None
     )
-    criterion = nn.CrossEntropyLoss(weight=class_weights)
+    # Label smoothing to prevent over-confidence
+    label_smoothing = getattr(args, "label_smoothing", 0.0)
+    criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=label_smoothing)
     
     # Handle Backbone Freezing (Warmup Phase)
     if freeze_epochs > 0 and hasattr(model, "freeze_backbone"):
@@ -844,12 +846,23 @@ def train(args: argparse.Namespace, model_class: type[nn.Module]) -> None:
         if freeze_epochs > 0 and epoch == freeze_epochs and hasattr(model, "unfreeze_backbone"):
             print(f"\nWarmup phase complete. Unfreezing backbone for full fine-tuning.")
             model.unfreeze_backbone()
-            # Update optimizer to include all parameters
-            optimizer = torch.optim.AdamW(
-                model.parameters(),
-                lr=args.lr,
-                weight_decay=args.weight_decay,
-            )
+            # Update optimizer with split learning rates to protect the backbone
+            # Backbone gets 10x lower learning rate than the head
+            backbone_params = []
+            head_params = []
+            
+            # Identify backbone vs head parameters
+            # Standard pattern in our models: self.resnet, self.vgg16, or just 'backbone'
+            for name, param in model.named_parameters():
+                if any(x in name.lower() for x in ['resnet', 'vgg', 'features', 'backbone']):
+                    backbone_params.append(param)
+                else:
+                    head_params.append(param)
+            
+            optimizer = torch.optim.AdamW([
+                {'params': backbone_params, 'lr': args.lr * 0.1},
+                {'params': head_params, 'lr': args.lr}
+            ], weight_decay=args.weight_decay)
             # Re-sync scheduler if needed? Or just let it continue. 
             # We'll re-sync to ensure it monitors the new loss landscape correctly.
             scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(

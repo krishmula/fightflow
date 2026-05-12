@@ -95,10 +95,12 @@ class CNNLSTMClassifier(nn.Module):
         lstm_bidirectional: bool,
         lstm_output: str,
         projection_dim: int | None = None,
+        use_motion_features: bool = False,
     ):
         super().__init__()
         self.backbone = backbone
         self.lstm_output = lstm_output
+        self.use_motion_features = use_motion_features
 
         feature_dim = backbone.feature_dim
         if projection_dim and projection_dim > 0 and projection_dim != feature_dim:
@@ -108,8 +110,9 @@ class CNNLSTMClassifier(nn.Module):
             self.proj = None
 
         dropout = lstm_dropout if lstm_layers > 1 else 0.0
+        lstm_input_dim = feature_dim * 2 if use_motion_features else feature_dim
         self.lstm = nn.LSTM(
-            input_size=feature_dim,
+            input_size=lstm_input_dim,
             hidden_size=lstm_hidden,
             num_layers=lstm_layers,
             dropout=dropout,
@@ -130,6 +133,16 @@ class CNNLSTMClassifier(nn.Module):
 
         if self.proj is not None:
             feats = self.proj(feats)
+
+        if self.use_motion_features:
+            # Calculate frame differences (velocity proxy)
+            # diffs shape: (b, t-1, dim)
+            diffs = feats[:, 1:] - feats[:, :-1]
+            # Zero-pad the first frame difference to maintain temporal length t
+            first_diff = torch.zeros_like(feats[:, :1])
+            diffs = torch.cat([first_diff, diffs], dim=1)
+            # Concatenate appearance and motion features
+            feats = torch.cat([feats, diffs], dim=-1)
 
         lstm_out, _ = self.lstm(feats)
         if self.lstm_output == "mean":
@@ -244,6 +257,7 @@ def train(args: argparse.Namespace) -> None:
         lstm_bidirectional=args.lstm_bidirectional,
         lstm_output=args.lstm_output,
         projection_dim=getattr(args, "feature_dim", None),
+        use_motion_features=getattr(args, "use_motion_features", False),
     ).to(device)
 
     labels = train_df["label"].to_numpy(dtype=np.int64)

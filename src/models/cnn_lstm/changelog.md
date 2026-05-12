@@ -132,3 +132,10 @@
     *   **Goal Reached!** The model significantly surpassed the 0.70 Macro-F1 target.
     *   The combination of heavy regularization (weight decay 0.01 + double dropout layers at 0.5) and the smaller LSTM capacity (128 hidden) worked perfectly to combat the overfitting seen in previous runs.
     *   The model was able to train stably and peaked at Epoch 17 (well after the backbone unfroze at Epoch 5), indicating the LSTM and backbone were learning effectively together.
+
+## [2026-05-12] - Final Sprint: Motion-Aware Temporal Pipeline
+### Roadmap for Final 24 Hours:
+1.  **ResNet18 Backbone Retraining**: Use the new data to push the single-frame spatial backbone from **0.68 F1** to **>0.75 F1**. This improves the "eyes" of the temporal model.
+2.  **Implementation of Motion Features (Frame Differences)**: Added explicit velocity modeling by concatenating `feats[t] - feats[t-1]` to the spatial features. This doubles the LSTM input dimension to capture appearance + motion.
+3.  **Final Integration**: Once the new backbone is ready, the `cnn_lstm` will be retrained from scratch using these Motion Features to break the 0.82 F1 record.
+4.  **Observation**: This strategy explicitly addresses the "speed" of punches, which was previously a bottleneck for the `hook` class.
