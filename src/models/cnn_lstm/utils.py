@@ -236,17 +236,70 @@ def resolve_latest_checkpoint(backbone):
 
 
 def split_by_video(df, splits, seed=42):
+    """
+    Groups samples by video_id and assigns them to splits using GSGS.
+    """
     if "split" in df.columns:
         if any(s in ["train", "val", "test"] for s in df["split"].dropna().unique()):
             return df[df["split"] == "train"], df[df["split"] == "val"], df[df["split"] == "test"]
-    v_ids = sorted(df["video_id"].unique())
-    random.Random(seed).shuffle(v_ids)
-    n = len(v_ids)
-    t_e = int(n * splits.get("train", 0.7))
-    v_e = t_e + int(n * splits.get("val", 0.15))
-    t_ids, v_ids_s, te_ids = set(v_ids[:t_e]), set(v_ids[t_e:v_e]), set(v_ids[v_e:])
-    df_t, df_v, df_te = df[df["video_id"].isin(t_ids)].copy(), df[df["video_id"].isin(v_ids_s)].copy(), df[df["video_id"].isin(te_ids)].copy()
-    for d, s in zip([df_t, df_v, df_te], ["train", "val", "test"]): d["split"] = s
+    
+    video_ids = sorted(df["video_id"].unique())
+    if len(video_ids) < 2:
+        return df, pd.DataFrame(), pd.DataFrame()
+
+    # Count total samples per video
+    video_totals = df.groupby("video_id").size().to_dict()
+    # Count labels per video for stratification
+    labels = sorted(df["punch_type"].unique().tolist())
+    video_label_counts = df.groupby(["video_id", "punch_type"]).size().unstack(fill_value=0).to_dict('index')
+    
+    total_samples = len(df)
+    train_ratio = splits.get("train", 0.8)
+    val_ratio = splits.get("val", 0.2)
+    test_ratio = splits.get("test", 0.0)
+    total_ratio = train_ratio + val_ratio + test_ratio
+    
+    ratios = {
+        "train": train_ratio / total_ratio,
+        "val": val_ratio / total_ratio,
+        "test": test_ratio / total_ratio
+    }
+    ratios = {k: v for k, v in ratios.items() if v > 0}
+    
+    targets_total = {k: total_samples * v for k, v in ratios.items()}
+    
+    rng = random.Random(seed)
+    shuffled = video_ids[:]
+    rng.shuffle(shuffled)
+    shuffled.sort(key=lambda vid: (video_totals[vid], str(vid)), reverse=True)
+    
+    assignments = {k: [] for k in ratios}
+    current_total = {k: 0.0 for k in ratios}
+    
+    def fill_ratio(name):
+        return current_total[name] / targets_total[name] if targets_total[name] > 0 else float('inf')
+
+    for vid in shuffled:
+        vid_total = float(video_totals[vid])
+        candidates = list(ratios.keys())
+        # Prioritize fill_ratio to ensure 80/20 balance
+        best_split = min(candidates, key=lambda s: (fill_ratio(s), current_total[s]))
+        
+        assignments[best_split].append(vid)
+        current_total[best_split] += vid_total
+
+    # Create split column
+    vid_to_split = {}
+    for split_name, vids in assignments.items():
+        for v in vids:
+            vid_to_split[v] = split_name
+            
+    df["split"] = df["video_id"].map(vid_to_split)
+    
+    df_t = df[df["split"] == "train"].copy()
+    df_v = df[df["split"] == "val"].copy()
+    df_te = df[df["split"] == "test"].copy()
+    
     return df_t, df_v, df_te
 
 

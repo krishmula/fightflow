@@ -397,7 +397,7 @@ def split_by_video(
         candidates = list(split_ratios.keys())
         best_split = min(
             candidates,
-            key=lambda s: (cost(s, vid_counts, vid_total), fill_ratio(s), current_total[s]),
+            key=lambda s: (fill_ratio(s), cost(s, vid_counts, vid_total), current_total[s]),
         )
         assignments[best_split].append(vid)
         current_total[best_split] += vid_total
