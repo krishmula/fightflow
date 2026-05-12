@@ -57,10 +57,13 @@ def _get_model_api(model_name: str):
     elif model_name == "cnn_lstm":
         from src.models.cnn_lstm.api import CNNLSTMAPI
         return CNNLSTMAPI()
+    elif model_name == "pose_lstm":
+        from src.models.pose_lstm.api import PoseLSTMAPI
+        return PoseLSTMAPI()
     else:
         raise SystemExit(
             f"Unknown model '{model_name}'. Available models: "
-            "['cnn_baseline', 'cnn_advanced', 'resnet18', 'vgg_16', 'cnn_lstm']"
+            "['cnn_baseline', 'cnn_advanced', 'resnet18', 'vgg_16', 'cnn_lstm', 'pose_lstm']"
         )
 
 

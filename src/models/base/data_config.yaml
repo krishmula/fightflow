@@ -6,6 +6,8 @@ data:
   manifest_file: "data/processed/dataset_manifest_kush.csv"
   processed_clips_dir: "data/processed/clips"
   clip_manifest_file: "data/processed/clip_manifest.csv"
+  processed_poses_dir: "data/processed/poses"
+  pose_manifest_file: "data/processed/pose_manifest.csv"
 
 # Global Target Classes
 classes: ["straight", "hook", "uppercut", "none"]

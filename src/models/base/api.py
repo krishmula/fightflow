@@ -8,6 +8,12 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Callable
 import yaml
 import argparse
+import numpy as np
+import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+from tqdm import tqdm
+import urllib.request
 
 from .utils import resolve_project_path, save_json
 
@@ -41,6 +47,8 @@ class BaseModelAPI(ABC):
         model_name = getattr(self, "name", None)
         if model_name == "cnn_lstm":
             self._prepare_clips()
+        elif model_name == "pose_lstm":
+            self._prepare_poses()
         else:
             self._prepare_frames(args)
 
@@ -625,3 +633,152 @@ class BaseModelAPI(ABC):
         print(f"  - Manifest file:    {manifest_file}")
         if skipped_rows:
             print(f"  - Skips log:        {skips_file}")
+
+    def _prepare_poses(self) -> None:
+        """
+        Extract MediaPipe pose keypoints directly from videos based on annotations.
+        This follows the end-to-end paradigm used by _prepare_clips.
+        """
+        data_cfg = self.config.get("data", {})
+        annotations_file = resolve_project_path(data_cfg["annotations_file"])
+        video_dir = resolve_project_path(data_cfg["video_dir"])
+        poses_dir = resolve_project_path(data_cfg.get("processed_poses_dir", "data/processed/poses"))
+        manifest_file = resolve_project_path(data_cfg.get("pose_manifest_file", "data/processed/pose_manifest.csv"))
+
+        poses_dir.mkdir(parents=True, exist_ok=True)
+        if any(poses_dir.iterdir()):
+            print(f"Clearing existing poses from {poses_dir} ...")
+            self._clear_dir(poses_dir)
+            poses_dir.mkdir(parents=True, exist_ok=True)
+
+        df = pd.read_csv(annotations_file)
+        class_names = self.config["classes"]
+        class_to_idx = {name: idx for idx, name in enumerate(class_names)}
+        print(f"Balancing dataset classes...")
+        df = self._sample_annotations(df, class_names)
+        
+        # Load splits and seed from the model's hparams.yaml ("common" section).
+        hparams_common = {}
+        default_config = getattr(self, "default_config", None)
+        if default_config and Path(default_config).is_file():
+            hparams_common = self._load_yaml(str(default_config)).get("common", {})
+        splits = hparams_common.get("splits", {"train": 0.8, "val": 0.2, "test": 0.0})
+        seed = hparams_common.get("seed", 42)
+        df = self._assign_splits_by_video(df, class_to_idx, splits, seed)
+
+        prep_cfg = self.config.get("preparation", {})
+        pre_frames = int(prep_cfg.get("clip_pre_frames", 6))
+        post_frames = int(prep_cfg.get("clip_post_frames", 4))
+        clip_len = pre_frames + post_frames + 1
+
+        print(f"Starting end-to-end pose extraction: {len(df)} annotations to process...")
+        
+        # Download MediaPipe Pose Landmarker model if missing
+        model_path = resolve_project_path("src/models/pose_lstm/pose_landmarker.task")
+        if not model_path.exists():
+            print(f"Downloading MediaPipe model to {model_path}...")
+            model_url = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task"
+            model_path.parent.mkdir(parents=True, exist_ok=True)
+            urllib.request.urlretrieve(model_url, str(model_path))
+
+        options = vision.PoseLandmarkerOptions(
+            base_options=python.BaseOptions(model_asset_path=str(model_path)),
+            running_mode=vision.RunningMode.IMAGE
+        )
+        landmarker = vision.PoseLandmarker.create_from_options(options)
+
+        samples = []
+        skipped = 0
+        processed_count = 0
+        
+        for video_id, video_df in df.groupby("video_id", sort=False):
+            video_path = video_dir / video_id
+            if not video_path.exists():
+                processed_count += len(video_df)
+                skipped += len(video_df)
+                continue
+
+            cap = cv2.VideoCapture(str(video_path))
+            if not cap.isOpened():
+                processed_count += len(video_df)
+                skipped += len(video_df)
+                continue
+
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            
+            for _, row in video_df.sort_values("frame_index").iterrows():
+                processed_count += 1
+                frame_index = int(row["frame_index"])
+                punch_type = str(row["punch_type"])
+                
+                print(
+                    f"\r  Progress: {processed_count}/{len(df)} | Extracted: {len(samples)} | Skipped: {skipped}",
+                    end="",
+                    flush=True,
+                )
+
+                label_idx = class_to_idx.get(punch_type, -1)
+                if label_idx == -1:
+                    skipped += 1
+                    continue
+
+                video_stem = Path(video_id).stem
+                pose_id = f"{punch_type}_{video_stem}_{frame_index:06d}_v{processed_count:06d}"
+                output_path = poses_dir / f"{pose_id}.npy"
+
+                # Extract range of frames for this annotation
+                indices = [frame_index - pre_frames + offset for offset in range(clip_len)]
+                clip_keypoints = []
+                
+                current_cap_frame = -1
+                for idx in indices:
+                    safe_idx = max(0, min(frame_count - 1, idx))
+                    if current_cap_frame != -1 and safe_idx == current_cap_frame + 1:
+                        ok, frame = cap.read()
+                    else:
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, safe_idx)
+                        ok, frame = cap.read()
+                    
+                    current_cap_frame = safe_idx
+                    if not ok or frame is None:
+                        # Use zeros if frame fail, or just append last
+                        clip_keypoints.append(clip_keypoints[-1] if clip_keypoints else [[0, 0, 0]] * 33)
+                        continue
+                    
+                    # MediaPipe Tasks Inference
+                    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+                    detection_result = landmarker.detect(mp_image)
+                    
+                    if detection_result.pose_landmarks:
+                        # Extract landmarks for the first detected person
+                        landmarks = [[lm.x, lm.y, lm.z] for lm in detection_result.pose_landmarks[0]]
+                        clip_keypoints.append(landmarks)
+                    else:
+                        clip_keypoints.append(clip_keypoints[-1] if clip_keypoints else [[0, 0, 0]] * 33)
+
+                if clip_keypoints:
+                    np.save(output_path, np.array(clip_keypoints))
+                    samples.append({
+                        "pose_path": str(output_path),
+                        "label": label_idx,
+                        "video_id": video_id,
+                        "center_frame": frame_index,
+                        "clip_length": clip_len,
+                        "punch_type": punch_type,
+                        "split": row["split"],
+                    })
+                else:
+                    skipped += 1
+
+            cap.release()
+
+        landmarker.close()
+        print()
+
+        manifest_df = pd.DataFrame(samples)
+        manifest_df.to_csv(manifest_file, index=False)
+        print(f"Pose preparation complete!")
+        print(f"  - Extracted poses: {len(samples)}")
+        print(f"  - Poses directory: {poses_dir}")
+        print(f"  - Manifest file:   {manifest_file}")

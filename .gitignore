@@ -8,6 +8,7 @@ data/interim/
 data/downloaded-videos/*
 data/processed/frames/*
 data/processed/clips/*
+data/processed/poses/*
 !data/downloaded-videos/.gitkeep
 
 # ── Python virtual environments ───────────────────────────────────────────────

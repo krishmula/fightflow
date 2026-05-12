@@ -209,7 +209,7 @@ def run_epoch(loader, model, criterion, device, optimizer=None, max_grad_norm=1.
         y_p.extend(torch.argmax(logits, 1).cpu().tolist())
         progress.set_postfix(loss=np.mean(losses[-10:]))
     from sklearn.metrics import accuracy_score, f1_score
-    return EpochMetrics(float(np.mean(losses)), accuracy_score(y_t, y_p), f1_score(y_t, y_p, average="macro")), np.array(y_t), np.array(y_p)
+    return EpochMetrics(float(np.mean(losses)), accuracy_score(y_t, y_p), f1_score(y_t, y_p, average="macro", zero_division=0)), np.array(y_t), np.array(y_p)
 
 
 def save_checkpoint(**kwargs):
@@ -258,7 +258,7 @@ def evaluate_and_save(model, loader, criterion, device, class_names, out_dir, sp
     out_dir.mkdir(parents=True, exist_ok=True)
     rep = {
         "metrics": {"loss": metrics.loss, "accuracy": metrics.accuracy, "macro_f1": metrics.macro_f1},
-        "classification_report": classification_report(y_true, y_pred, target_names=class_names, output_dict=True)
+        "classification_report": classification_report(y_true, y_pred, target_names=class_names, output_dict=True, zero_division=0)
     }
     save_json(out_dir / f"{split_name}_metrics.json", rep)
     cm = confusion_matrix(y_true, y_pred)

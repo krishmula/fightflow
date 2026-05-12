@@ -20,6 +20,7 @@ ipykernel         # register the venv as a Jupyter kernel
 torch
 torchvision
 torchaudio
+mediapipe
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 tqdm              # progress bars in scripts

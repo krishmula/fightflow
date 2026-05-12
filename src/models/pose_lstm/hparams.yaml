@@ -1,0 +1,91 @@
+# Pose LSTM classifier configuration
+# Usage:
+#   python main.py --model pose_lstm --task prepare_data
+#   python main.py --model pose_lstm --task train
+
+common:
+  # Random seed for reproducibility
+  seed: 42
+  # Hardware to use (auto, cpu, cuda, mps)
+  device: auto
+  # Data splitting configuration (Group-aware Stratified Greedy Split)
+  splits:
+    train: 0.80
+    val: 0.20
+    test: 0.00
+  # Fixed number of frames per sequence fed to the LSTM.
+  # This corresponds to the window size around the peak frame.
+  clip_length: 11
+  # LSTM architecture configuration
+  lstm_hidden: 128
+  lstm_layers: 2
+  lstm_dropout: 0.5
+  lstm_bidirectional: true
+  # Dropout rate in the final classification layer
+  classifier_dropout: 0.5
+  # Number of samples per batch
+  batch_size: 32
+  # Number of subprocesses to use for data loading
+  num_workers: 4
+  # Root directory for extracted poses (coordinates)
+  pose_root: data/processed/poses
+  # Manifest file for pose sequences
+  manifest_file: data/processed/pose_manifest.csv
+  # Path to the MediaPipe Pose Landmarker task file
+  pose_landmarker_path: src/models/pose_lstm/pose_landmarker.task
+
+train:
+  # Comma-separated list of target classes
+  class_names: straight,hook,uppercut,none
+  # Total number of training loops over the entire dataset
+  epochs: 100
+  # Path to a checkpoint to resume training from (null to start from scratch)
+  resume: null
+  # Initial learning rate for the AdamW optimizer (Lower for fine-tuning, e.g., 0.0001)
+  lr: 0.0001
+  # Weight decay (L2 penalty) for regularization (Higher for fine-tuning, e.g., 0.1)
+  weight_decay: 0.1
+  # Label smoothing to prevent over-confidence (0.1 is a standard value)
+  label_smoothing: 0.1
+  # Gaussian noise standard deviation for pose coordinates (augmentation)
+  pose_noise_std: 0.01
+  # Epochs to wait for val_macro_f1 to improve before early stopping
+  patience: 15
+  # Epochs to wait before reducing the learning rate
+  lr_patience: 5
+  # Whether to apply class weights to handle dataset imbalance
+  use_class_weights: true
+  # Directory where run artifacts (checkpoints, metrics) will be saved
+  output_dir: runs/pose_lstm
+  # Subfolder prefix for identifying the current run
+  run_name: pose_lstm
+  # Directory where the evaluation metrics and reports will be saved
+  report_dir: runs/pose_lstm/eval
+
+test:
+  # Path to the best checkpoint saved during training
+  checkpoint: runs/pose_lstm/REPLACE_WITH_RUN/checkpoints/best.pt
+  # Directory where the test metrics and report will be saved
+  report_dir: runs/pose_lstm/eval
+  # Name of the subfolder for this test run
+  run_name: test_pose_lstm
+
+validate:
+  # Path to the best checkpoint saved during training
+  checkpoint: runs/pose_lstm/REPLACE_WITH_RUN/checkpoints/best.pt
+  # Directory where the validation metrics and report will be saved
+  report_dir: runs/pose_lstm/eval
+  # Name of the subfolder for this validation run
+  run_name: val_pose_lstm
+
+overlay:
+  # Path to the best checkpoint saved during training
+  checkpoint: runs/pose_lstm/REPLACE_WITH_RUN/checkpoints/best.pt
+  # Path to the input video to process
+  video: data/test_video.mp4
+  # Name of the output video file (saved in the run's inference/ folder)
+  output: overlay_result.mp4
+  # Comma-separated list of target classes (must match training)
+  class_names: straight,hook,uppercut,none
+  # Minimum confidence to display a label other than "NONE"
+  confidence_threshold: 0.4
