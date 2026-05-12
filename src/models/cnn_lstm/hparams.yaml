@@ -20,7 +20,7 @@ common:
     test: 0.00
   # Fixed number of frames per clip fed to the LSTM (clips are subsampled/padded to this length).
   # If you change this, consider updating clip_pre_frames/clip_post_frames in base/data_config.yaml and re-running prepare_data.
-  clip_length: 12
+  clip_length: 11
   # CNN backbone architecture (cnn_baseline, cnn_advanced, resnet18, vgg_16)
   cnn_backbone: resnet18
   # CNN weight init source:

@@ -25,32 +25,35 @@ preparation:
   uniform_samples_per_class: "auto"
   # Frames before the annotated peak frame to include in the clip.
   # Keep in sync with cnn_lstm clip_length (pre + post + 1) and re-run prepare_data if changed.
-  clip_pre_frames: 8
+  clip_pre_frames: 6
   # Frames after the annotated peak frame to include in the clip.
   # Keep in sync with cnn_lstm clip_length (pre + post + 1) and re-run prepare_data if changed.
-  clip_post_frames: 3
+  clip_post_frames: 4
 
 # Data Augmentation Configuration
 augmentation:
   # Basic augmentations
-  random_horizontal_flip_p: 0.5
+  random_horizontal_flip_p: 0.2
   color_jitter:
-    brightness: 0.2
-    contrast: 0.2
-    saturation: 0.15
+    brightness: 0.15
+    contrast: 0.15
+    saturation: 0.1
   
   # Motion-specific augmentations for punch classification
   random_rotation:
-    degrees: 15  # Small rotations to simulate motion variations
+    degrees: 6  # Small rotations to simulate motion variations
   random_affine:
     degrees: 0
-    translate: [0.1, 0.1]  # Small translations
-    scale: [0.9, 1.1]     # Small scaling
-    shear: 5               # Small shearing
+    translate: [0.05, 0.03]  # Small translations
+    scale: [0.95, 1.05]     # Small scaling
+    shear: 3               # Small shearing
   random_erasing:
-    p: 0.3        # Probability of random erasing
+    p: 0.0        # Probability of random erasing
     scale: [0.02, 0.1]  # Size of erased area
     ratio: [0.3, 3.3]   # Aspect ratio of erased area
+  motion_emphasis:
+    p: 0.5     # Probability of applying motion emphasis to a clip.
+    alpha: 0.7 # Strength of motion boost (0 = no boost, higher = stronger).
   
   # Normalization (ImageNet stats for transfer learning)
   normalize:

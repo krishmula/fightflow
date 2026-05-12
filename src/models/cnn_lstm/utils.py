@@ -113,14 +113,22 @@ class ClipDataset(Dataset):
         c_f = random.uniform(max(0, 1 - jitter_cfg["contrast"]), 1 + jitter_cfg["contrast"])
         s_f = random.uniform(max(0, 1 - jitter_cfg["saturation"]), 1 + jitter_cfg["saturation"])
         rot_deg = aug_cfg.get("random_rotation", {"degrees": 15})["degrees"]
-        angle = random.uniform(-rot_deg, rot_deg)
         aff_cfg = aug_cfg.get("random_affine", {"degrees": 0, "translate": [0.1, 0.1], "scale": [0.9, 1.1], "shear": 5})
+        affine_deg = aff_cfg.get("degrees", 0)
+        angle_deg = affine_deg if affine_deg else rot_deg
+        angle = random.uniform(-angle_deg, angle_deg)
         tx = random.uniform(-aff_cfg["translate"][0] * image_size, aff_cfg["translate"][0] * image_size)
         ty = random.uniform(-aff_cfg["translate"][1] * image_size, aff_cfg["translate"][1] * image_size)
         scale = random.uniform(aff_cfg["scale"][0], aff_cfg["scale"][1])
         shear = random.uniform(-aff_cfg["shear"], aff_cfg["shear"])
+        erase_cfg = aug_cfg.get("random_erasing", {"p": 0.3, "scale": [0.02, 0.1], "ratio": [0.3, 3.3]})
+        eraser = transforms.RandomErasing(
+            p=erase_cfg.get("p", 0.0),
+            scale=erase_cfg.get("scale", [0.02, 0.1]),
+            ratio=erase_cfg.get("ratio", [0.3, 3.3]),
+        )
 
-        frames = []
+        raw_frames = []
         for img in images:
             img = F.resize(img, (image_size, image_size))
             if do_flip: img = F.hflip(img)
@@ -128,8 +136,25 @@ class ClipDataset(Dataset):
             img = F.adjust_contrast(img, c_f)
             img = F.adjust_saturation(img, s_f)
             img = F.affine(img, angle=angle, translate=(tx, ty), scale=scale, shear=shear)
-            t = F.to_tensor(img)
+            raw_frames.append(F.to_tensor(img))
+
+        motion_cfg = aug_cfg.get("motion_emphasis", {"p": 0.0, "alpha": 0.7})
+        if motion_cfg.get("p", 0.0) > 0 and random.random() < motion_cfg["p"]:
+            clip = torch.stack(raw_frames)
+            diffs = torch.zeros_like(clip)
+            diffs[1:] = (clip[1:] - clip[:-1]).abs()
+            max_val = diffs.max()
+            if max_val > 0:
+                mask = diffs / max_val
+                alpha = float(motion_cfg.get("alpha", 0.7))
+                clip = (clip * (1.0 + alpha * mask)).clamp(0.0, 1.0)
+                raw_frames = [frame for frame in clip]
+
+        frames = []
+        for t in raw_frames:
             t = F.normalize(t, mean=cfg["norm_cfg"]["mean"], std=cfg["norm_cfg"]["std"])
+            if erase_cfg.get("p", 0.0) > 0:
+                t = eraser(t)
             frames.append(t)
         return torch.stack(frames)
 
