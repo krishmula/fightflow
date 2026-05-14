@@ -3,7 +3,7 @@ data:
   annotations_file: "data/annotations.csv"
   video_dir: "data/downloaded-videos"
   processed_frames_dir: "data/processed/frames"
-  manifest_file: "data/processed/dataset_manifest_kush.csv"
+  manifest_file: "data/processed/dataset_manifest.csv"
   processed_clips_dir: "data/processed/clips"
   clip_manifest_file: "data/processed/clip_manifest.csv"
   processed_poses_dir: "data/processed/poses"
