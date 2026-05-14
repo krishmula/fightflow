@@ -1,5 +1,6 @@
-import pandas as pd
+import random
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
@@ -7,77 +8,28 @@ import torchvision.transforms as transforms
 import torchvision.transforms.functional as F
 from PIL import Image, UnidentifiedImageError
 from pathlib import Path
-from dataclasses import dataclass
 from tqdm import tqdm
-import yaml
-import json
-import random
 import os
+
+# ── Import all shared utilities from the base module (DRY) ────────────────
+from ..base.utils import (
+    EpochMetrics,
+    compute_class_weights,
+    get_data_config,
+    load_checkpoint,
+    load_manifest,
+    load_yaml,
+    parse_class_names,
+    resolve_device,
+    resolve_project_path,
+    save_checkpoint,
+    save_json,
+    set_seed,
+    split_by_video,
+)
 
 # Constants
 SUPPORTED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp"}
-
-
-def set_seed(seed: int):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-
-
-def resolve_device(device_name: str = "auto") -> torch.device:
-    if device_name == "auto":
-        if torch.cuda.is_available():
-            return torch.device("cuda")
-        if torch.backends.mps.is_available():
-            return torch.device("mps")
-        return torch.device("cpu")
-    return torch.device(device_name)
-
-
-def resolve_project_path(path: str | Path) -> Path:
-    return Path(path).resolve()
-
-
-def get_data_config(config_path: Path | None = None) -> dict:
-    if config_path is None:
-        config_path = Path(__file__).parent.parent.parent / "models" / "base" / "data_config.yaml"
-    with open(config_path, "r") as f:
-        return yaml.safe_load(f)
-
-
-def parse_class_names(class_names: str) -> list[str]:
-    return [c.strip() for c in class_names.split(",")]
-
-
-def load_manifest(manifest_path: Path) -> pd.DataFrame:
-    if not manifest_path.exists():
-        raise FileNotFoundError(f"Manifest not found: {manifest_path}")
-    return pd.read_csv(manifest_path)
-
-
-def save_json(path: Path, data: dict):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(data, f, indent=4)
-
-
-def load_yaml(path: Path) -> dict:
-    with open(path, "r") as f:
-        return yaml.safe_load(f)
-
-
-def compute_class_weights(labels: np.ndarray, num_classes: int, device: torch.device) -> torch.Tensor | None:
-    if len(labels) == 0:
-        return None
-    counts = np.bincount(labels, minlength=num_classes).astype(np.float32)
-    weights = np.zeros_like(counts)
-    non_zero = counts > 0
-    weights[non_zero] = counts.sum() / (num_classes * counts[non_zero])
-    return torch.tensor(weights, dtype=torch.float32, device=device)
 
 
 def select_frame_indices(total: int, clip_length: int) -> list[int]:
@@ -212,17 +164,11 @@ def run_epoch(loader, model, criterion, device, optimizer=None, max_grad_norm=1.
     return EpochMetrics(float(np.mean(losses)), accuracy_score(y_t, y_p), f1_score(y_t, y_p, average="macro", zero_division=0)), np.array(y_t), np.array(y_p)
 
 
-def save_checkpoint(**kwargs):
-    path = kwargs.pop("path")
-    model = kwargs.pop("model")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    ckpt = {"model_state_dict": model.state_dict()}
-    ckpt.update(kwargs)
-    torch.save(ckpt, path)
 
-
-def load_checkpoint(path, device):
-    return torch.load(path, map_location=device, weights_only=False)
+def save_checkpoint(path: Path, model: torch.nn.Module, **metadata) -> None:
+    """Alias kept for legacy callers — delegates to base."""
+    from ..base.utils import save_checkpoint as _sc
+    _sc(path, model, **metadata)
 
 
 def resolve_latest_checkpoint(backbone):
@@ -320,7 +266,13 @@ def evaluate_and_save(model, loader, criterion, device, class_names, out_dir, sp
 
 
 def get_transforms(image_size, augment=False, aug_cfg=None):
-    if aug_cfg is None: aug_cfg = {}
+    if aug_cfg is None:
+        aug_cfg = {}
     n_cfg = aug_cfg.get("normalize", {"mean": [0.485, 0.456, 0.406], "std": [0.229, 0.224, 0.225]})
-    if not augment: return transforms.Compose([transforms.Resize((image_size, image_size)), transforms.ToTensor(), transforms.Normalize(mean=n_cfg["mean"], std=n_cfg["std"])])
+    if not augment:
+        return transforms.Compose([
+            transforms.Resize((image_size, image_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=n_cfg["mean"], std=n_cfg["std"]),
+        ])
     return {"size": image_size, "aug_cfg": aug_cfg, "norm_cfg": n_cfg}

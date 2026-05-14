@@ -16,7 +16,24 @@ common:
   # Fixed number of frames per sequence fed to the LSTM.
   # This corresponds to the window size around the peak frame.
   clip_length: 11
-  # LSTM architecture configuration
+  # ── Feature engineering ──────────────────────────────────────────────────
+  # Total input feature size per frame fed into the LSTM:
+  #   99 coords + 99 velocities + 18 rel_vectors + 3 l_wrist_ext + 3 r_wrist_ext + 3 l_max_v + 3 r_max_v + 1 l_angle + 1 r_angle + 3 l_wr_nose_vel + 3 r_wr_nose_vel
+  input_dim: 236
+  # Number of trailing frames used to average the extension-phase wrist velocity
+  extension_frames: 4
+  # MediaPipe Pose landmark indices used in feature engineering (33-landmark model)
+  landmark_indices:
+    nose: 0
+    l_shoulder: 11
+    r_shoulder: 12
+    l_elbow: 13
+    r_elbow: 14
+    l_wrist: 15
+    r_wrist: 16
+    l_hip: 23
+    r_hip: 24
+  # ── Model architecture ───────────────────────────────────────────────────
   lstm_hidden: 128
   lstm_layers: 2
   lstm_dropout: 0.5
@@ -38,23 +55,23 @@ train:
   # Comma-separated list of target classes
   class_names: straight,hook,uppercut,none
   # Total number of training loops over the entire dataset
-  epochs: 100
+  epochs: 35
   # Path to a checkpoint to resume training from (null to start from scratch)
   resume: null
   # Initial learning rate for the AdamW optimizer (Lower for fine-tuning, e.g., 0.0001)
   lr: 0.0001
-  # Weight decay (L2 penalty) for regularization (Higher for fine-tuning, e.g., 0.1)
-  weight_decay: 0.1
+  # Weight decay (L2 penalty) for regularization (Reduced to prevent underfitting LSTMs)
+  weight_decay: 0.01
   # Label smoothing to prevent over-confidence (0.1 is a standard value)
   label_smoothing: 0.1
   # Gaussian noise standard deviation for pose coordinates (augmentation)
-  pose_noise_std: 0.01
+  pose_noise_std: 0.05
   # Epochs to wait for val_macro_f1 to improve before early stopping
-  patience: 15
+  patience: 10
   # Epochs to wait before reducing the learning rate
   lr_patience: 5
   # Whether to apply class weights to handle dataset imbalance
-  use_class_weights: true
+  use_class_weights: false
   # Directory where run artifacts (checkpoints, metrics) will be saved
   output_dir: runs/pose_lstm
   # Subfolder prefix for identifying the current run
