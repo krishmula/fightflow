@@ -126,13 +126,6 @@ class ClipDataset(Dataset):
         return clip, label
 
 
-@dataclass
-class EpochMetrics:
-    loss: float
-    accuracy: float
-    macro_f1: float
-
-
 def run_epoch(loader, model, criterion, device, optimizer=None, max_grad_norm=1.0):
     is_train = optimizer is not None
     model.train() if is_train else model.eval()
