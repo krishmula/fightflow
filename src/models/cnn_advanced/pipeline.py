@@ -72,14 +72,14 @@ class AdvancedCNN(nn.Module):
         # More sophisticated classifier with better regularization
         self.classifier = nn.Sequential(
             nn.Flatten(),
-            nn.Dropout(p=0.5),  # Increased dropout
+            nn.Dropout(p=0.5),
             nn.Linear(1024, 512),
             nn.ReLU(inplace=True),
-            nn.BatchNorm1d(512),  # Added batch norm
+            nn.LayerNorm(512),
             nn.Dropout(p=0.3),
             nn.Linear(512, 256),
             nn.ReLU(inplace=True),
-            nn.BatchNorm1d(256),  # Added batch norm
+            nn.LayerNorm(256),
             nn.Dropout(p=0.2),
             nn.Linear(256, num_classes)
         )

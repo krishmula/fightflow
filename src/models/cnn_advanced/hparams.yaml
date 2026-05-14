@@ -5,6 +5,8 @@ common:
   batch_size: 8
   # Number of subprocesses to use for data loading
   num_workers: 2
+  # Number of frames to extract from each video (1 = middle frame)
+  frames_per_video: 10
   # Hardware to use (auto, cpu, cuda, mps)
   device: auto
   # Random seed for reproducibility
