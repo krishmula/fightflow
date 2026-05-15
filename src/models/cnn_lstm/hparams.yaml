@@ -28,7 +28,7 @@ common:
   #   - imagenet: ImageNet weights (used with resnet18/vgg_16 backbone only)
   #   - random: Random init (no pretrained weights)
   #   - <path>: Explicit checkpoint path (e.g., runs/<cnn_backbone>/<run_name>/checkpoints/best.pt)
-  cnn_init: latest
+  cnn_init: runs/resnet18/resnet18_multiclass_20260514_180523/checkpoints/best.pt
   # Number of initial epochs with frozen backbone (only train LSTM/Attention)
   freeze_epochs: 5
   # LSTM hidden size

@@ -27,13 +27,13 @@ train:
   # Total number of training loops over the entire dataset
   epochs: 50
   # Learning rate for the AdamW optimizer
-  lr: 0.001
+  lr: 0.0005
   # Weight decay (L2 penalty) for the optimizer
   weight_decay: 0.0001
   # Epochs to wait for val_macro_f1 to improve before early stopping
-  patience: 5
+  patience: 15
   # Epochs to wait before reducing the learning rate
-  lr_patience: 2
+  lr_patience: 5
   # Whether to compute and apply class weights to handle imbalanced datasets
   use_class_weights: true
   # Directory where run artifacts (checkpoints, metrics) will be saved
