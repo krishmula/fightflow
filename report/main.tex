@@ -44,7 +44,7 @@ engineered biomechanical descriptors. All models are trained on a
 leakage-free, video-level split consisting of 2,625 training samples and 695
 test samples. The Pose-LSTM achieves the best test macro-F1 of 0.682,
 substantially outperforming the best frame-based model, ResNet-18 (0.570),
-and the Baseline CNN (0.402). The CNN+LSTM reaches a macro-F1 of 0.586,
+and the Baseline CNN (0.402). The CNN+LSTM reaches a macro-F1 of 0.588,
 confirming that temporal context improves over single-frame inference. Our
 results show that skeleton-based temporal models generalize significantly
 better than pixel-based approaches for fine-grained punch recognition with a
@@ -151,6 +151,17 @@ Because the split is video-level rather than clip-level, the per-class
 distribution within the test set reflects the natural video groupings and is
 not guaranteed to be exactly uniform (test set breakdown: 163 straight,
 128 hook, 174 uppercut, 230 none).
+
+\subsection{Data Leakage and Correction}
+Early experiments used clip-level random splits, where clips from the same
+video could appear in both the training and test sets. Under this setup,
+models achieved inflated macro-F1 scores of up to 0.933 for ResNet-18 and
+0.877 for the Advanced CNN. These results were not reproducible on unseen
+videos and indicated that models were memorizing video-specific visual
+patterns rather than learning generalizable punch signatures. We identified
+this as data leakage and corrected it by adopting the video-level GSGS split
+described above. All results reported in this paper are from the
+leakage-free evaluation.
 
 \section{Methodology}
 
@@ -284,7 +295,7 @@ Table~\ref{tab:results} summarizes test performance for all five models.
 Baseline CNN   &  2 & 0.456 & 0.402 \\
 Advanced CNN   &  6 & 0.370 & 0.341 \\
 ResNet-18      &  7 & 0.578 & 0.570 \\
-CNN+LSTM       & 19 & ---   & 0.586 \\
+CNN+LSTM       &  7 & 0.593 & 0.588 \\
 Pose-LSTM      & \textbf{31} & \textbf{0.692} & \textbf{0.682} \\
 \bottomrule
 \end{tabular}
@@ -392,6 +403,13 @@ backbone is unfrozen, it quickly memorizes video-specific visual patterns
 (background textures, lighting, fighter appearance) rather than learning
 viewpoint-invariant punch cues.
 
+Notably, the CNN+LSTM also peaks at epoch~7, the same unfreeze epoch as
+ResNet-18. This suggests that the marginal improvement of CNN+LSTM over
+ResNet-18 (0.588 vs.\ 0.570) may stem from the backbone receiving additional
+gradient signal through the LSTM loss rather than from the LSTM learning
+genuine temporal structure. Isolating the LSTM's true contribution would
+require a frozen-backbone ablation where only the LSTM is trained.
+
 The Pose-LSTM shows a markedly different trajectory. Train and test F1 rise
 together throughout training, with the gap narrowing steadily to 0.129 at the
 best epoch~31 (train F1 = 0.811, test F1 = 0.682). This contrasts with the
@@ -415,12 +433,21 @@ skeleton but must be inferred implicitly from RGB pixels.
 
 \subsection{Hook Classification Difficulty}
 The hook class is the hardest to classify across all five models.
-Biomechanically, a hook shares the forward arm extension of a straight during
-its initiation phase and resembles the bent-elbow guard of a \textit{none}
-position in profile. The two main confusion patterns in the Pose-LSTM confirm
-this: 52 straight samples are predicted as hook, and 55 none samples are
-predicted as hook. Longer temporal windows or pre-impact motion context may
-help disambiguate this class in future work.
+Biomechanically, a hook and a straight differ in one precise way: in a
+straight punch, the elbow angle opens from approximately 90 degrees at the
+cocked position to near 180 degrees at full extension, while in a hook the
+elbow angle remains close to 90 degrees throughout as the arm sweeps
+laterally as a near-rigid unit. This means the rate of change of elbow angle
+over the clip is a direct discriminator between the two classes. The current
+feature set includes static elbow angles per frame but does not explicitly
+include elbow angle velocity (the per-frame delta of the elbow angle). Adding
+this 2-dimensional feature (one per arm) would directly encode the signal that
+separates hooks from straights and is a targeted fix for future work. The two
+main confusion patterns in the Pose-LSTM -- 52 straight samples predicted as
+hook and 55 none samples predicted as hook -- are consistent with this missing
+temporal derivative: without it, hooks and straights look similar in their
+static pose, and the low-velocity guard position of \textit{none} overlaps
+with the held elbow angle of a hook.
 
 \subsection{Limitations}
 The primary limitation of this work is dataset scale. With only 20 source
@@ -439,7 +466,7 @@ for boxing punch classification. On a balanced, leakage-free dataset of 3,320
 samples from 20 videos, a Pose-LSTM using MediaPipe skeleton features and
 engineered biomechanical descriptors (macro-F1~=~0.682) substantially
 outperforms all frame-based approaches including a fine-tuned ResNet-18
-(0.570) and a CNN+LSTM temporal model (0.586). The training dynamics in
+(0.570) and a CNN+LSTM temporal model (0.588). The training dynamics in
 Fig.~\ref{fig:training_curves} illustrate why: pixel-based models overfit
 sharply to training video appearances while skeleton-based representations
 maintain a tight train/test gap across all epochs. This result demonstrates
@@ -448,9 +475,12 @@ dataset scales and suggests that skeleton-based models are the right starting
 point for fine-grained sports action recognition in data-limited settings.
 
 Future directions include: (1) expanding the dataset to 50+ videos with
-multiple fighters and environments; (2) applying GCN-based architectures over
-the MediaPipe pose graph; (3) integrating optical flow as an additional
-modality; and (4) deploying the Pose-LSTM in a real-time edge coaching system.
+multiple fighters and environments; (2) adding elbow angle velocity as an
+explicit feature to directly encode the hook-vs-straight discriminator
+identified in Section~\ref{sec:discussion}; (3) applying GCN-based
+architectures over the MediaPipe pose graph; (4) integrating optical flow as
+an additional modality; and (5) deploying the Pose-LSTM in a real-time edge
+coaching system.
 
 \begin{thebibliography}{00}
 
